@@ -1,3 +1,8 @@
 experiments/
-*/_pycache/
+*/__pycache__/
 outputs/
+Dataset_1024_8bit/
+Dataset_Test_1024_8bit/
+wandb/
+mlflow.db
+__pycache__/

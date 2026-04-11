@@ -112,9 +112,37 @@ class GradCAM:
         target_score = logits[0, target_class]
         target_score.backward(retain_graph=True)
 
-        # Gradyanlar ve aktivasyonlar
-        gradients = self.gradients       # (1, C, h, w)
-        activations = self.activations   # (1, C, h, w)
+        # Gradyanlar ve aktivasyonlar — backbone'a göre farklı şekillerde gelebilir:
+        #   CNN  (ConvNeXt): (B, C, h, w)  — channels-first
+        #   Swin (SwinV2):   (B, h, w, C)  — channels-last
+        #   ViT  (DINOv2):   (B, N, C)     — sequence (N = h*w spatial tokens)
+        gradients = self.gradients
+        activations = self.activations
+
+        if activations.ndim == 3:
+            # ViT/DINOv2: (B, N+cls, C) → (B, C, h, w)
+            # CLS/register token'ları çıkar (num_prefix_tokens ile belirlenir)
+            num_prefix = getattr(self.target_layer, "num_prefix_tokens", 0)
+            if num_prefix == 0:
+                # target_layer'da yoksa backbone'dan bak
+                backbone = self.model.backbone if hasattr(self.model, "backbone") else self.model
+                num_prefix = getattr(backbone, "num_prefix_tokens", 0)
+            if num_prefix > 0:
+                activations = activations[:, num_prefix:]
+                gradients = gradients[:, num_prefix:]
+            B, N, C = activations.shape
+            h = w = int(N ** 0.5)
+            if h * w != N:
+                # Kare değilse en yakın uyumu bul (nadir durum)
+                h = int(round(N ** 0.5))
+                w = N // h
+            activations = activations.permute(0, 2, 1).reshape(B, C, h, w)
+            gradients = gradients.permute(0, 2, 1).reshape(B, C, h, w)
+        elif activations.ndim == 4 and activations.shape[1] == activations.shape[2] and activations.shape[3] != activations.shape[1]:
+            # Channels-last (Swin): (B, h, w, C) — spatial dims equal, last dim is channels
+            activations = activations.permute(0, 3, 1, 2)
+            gradients = gradients.permute(0, 3, 1, 2)
+        # else: already (B, C, h, w) — CNN (ConvNeXt, ResNet, etc.)
 
         # Global Average Pooling: Her kanalın önem ağırlığı
         # Gradyanın spatial boyutları üzerinden ortalama alınır

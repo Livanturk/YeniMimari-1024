@@ -34,12 +34,13 @@ DATASET_STATS = {
 }
 
 # 8-bit dataset normalizasyon istatistikleri (all-pixel, 0-1 scale)
-# BIRADS-Full-Train-8Bit-Processed dataseti için (claude.md Section 3)
-# Segmentasyon yok; sıfır pikseller letterbox padding'den gelir.
+# Dataset_1024_8bit dataseti için (claude.md Section 3, compute_norm_stats.py)
+# CLAHE + letterbox 1024x1024 + 8-bit PNG pipeline.
+# NOT: Eski BIRADS-Full-Train-8Bit-Processed değerleri (0.0990/0.1644) YANLIŞ idi.
 DATASET_STATS_8BIT = {
     "noseg": {
-        "mean": [0.0990, 0.0990, 0.0990],
-        "std":  [0.1644, 0.1644, 0.1644],
+        "mean": [0.1210, 0.1210, 0.1210],
+        "std":  [0.1977, 0.1977, 0.1977],
     },
 }
 
