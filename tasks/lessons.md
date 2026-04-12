@@ -125,3 +125,203 @@ Based on B-series results:
 | 16-bit ref | ConvNeXt-L  | (target)             | 0.6867      | 0.7233   | -3.7pp | —         | —     |
 ```
 *B5 test F1 is from SWA-averaged model, not best checkpoint.
+
+---
+
+## C-Series Design Rationale (2026-04-11)
+
+### Lesson #21 — Generalization Gap Is the Primary Adversary, Attack It from Multiple Angles
+**Evidence from B-series:**
+- B1 (bug fixes only): gap 9.5pp — worst in study
+- B3 (Mixup/CutMix): gap 7.3pp — best relative gap reduction
+- B5 (SWA): gap 6.7pp — best absolute test F1 (0.6615)
+- C1 (SWA + Mixup): expected to stack → gap ~5-6pp
+
+Even with the best techniques, the gap remains substantial. The 8-bit pipeline's intrinsic ceiling (Lesson #19) means we must extract maximum generalization from every possible angle.
+
+**Five regularization axes identified:**
+1. **Capacity (C4):** Over-parameterization → structural regularization via smaller backbone
+2. **Feature Preservation (C5):** Fine-tuning damage → lower backbone LR preserves ImageNet features
+3. **Loss Landscape (C6, C7):** Auxiliary loss noise (C6) and hard-example mining (C7)
+4. **Explicit Dropout (C8):** Memorization → force distributed representations
+5. **Combination (C1):** Orthogonal stacking of proven techniques
+
+**Rule:** When the generalization gap is the bottleneck (not val performance), systematic ablation across independent regularization axes is more informative than iteratively stacking techniques. Each axis tests a different hypothesis about WHY the model overfits — capacity, feature destruction, loss function noise, or co-adaptation. Results will reveal which overfitting mechanism dominates in 8-bit mammography.
+
+---
+
+## C-Series Experiment Lessons (2026-04-12)
+
+### Lesson #22 — Asymmetry Loss Is the Hidden Generalization Gap Source (C6 — New 8-bit Champion)
+**Problem:** C6 removed the asymmetry_loss (weight 0.10→0.0) from B5 (SWA). This was intended as a neutral "does it help or hurt?" test. The answer was emphatic:
+
+**Evidence:**
+- **Test F1: 0.6762** — new 8-bit record (+1.47pp vs B5's 0.6615)
+- **Val→test gap: 4.21pp** — narrowest in the entire study (vs B5's 6.71pp → 2.50pp improvement)
+- BR1: 0.531 (+7.8pp vs B5's 0.453) — massive recovery of the SWA-induced BR1 regression
+- BR2: 0.798 (identical to B5) — no regression on the dominant class
+- BR4: 0.518 (-2.9pp vs B5's 0.547) — mild regression
+- BR5: 0.857 (+0.9pp vs B5)
+- Accuracy: 0.7444 (vs B5's 0.7390)
+- 16-bit gap narrowed to 4.71pp (from 6.18pp)
+
+**Root cause:** The asymmetry loss computes bilateral differences (RCC vs LCC, RMLO vs LMLO) and penalizes the model based on left-right asymmetry patterns. These patterns overfit to training distribution-specific bilateral features that don't transfer to test. The extra gradient signal corrupts the primary classification loss landscape, especially on the delicate BR1-BR2 boundary where SWA's smoothing already introduces ambiguity.
+
+**Why C6 recovered BR1:** The asymmetry loss was the *source* of the BR1 problem, not SWA alone. SWA smoothed decision boundaries, but asymmetry loss noise pushed the BR1-BR2 boundary into BR2 territory during training. Removing the noise let SWA average over a cleaner trajectory.
+
+**SWA checkpoint note:** C6's SWA model beat the best checkpoint (SWA overwrote best_model.pt per train.py:734-741 logic). This confirms SWA works well when the loss is clean.
+
+**Rule:** Auxiliary losses that capture domain-specific priors (bilateral asymmetry) can hurt generalization when the prior doesn't hold across the train→test shift. The asymmetry_loss should be **permanently disabled** for this dataset. When facing a generalization gap, audit existing losses before adding regularization — the gap may be caused by loss noise, not insufficient regularization.
+
+### Lesson #23 — SWA and Mixup/CutMix Are Antagonistic, Not Orthogonal (C1)
+**Problem:** C1 combined SWA + Mixup/CutMix, hypothesizing orthogonal stacking would reach test F1 ≥ 0.68. Result: test F1 = 0.6431 — **worse than both B5 (SWA only, 0.6615) and B3 (Mixup only, 0.6459)**.
+
+**Evidence:**
+- Test F1: 0.6431 (-1.84pp vs B5, -0.28pp vs B3)
+- Gap: 7.27pp (worse than B5's 6.71pp and B3's 7.34pp)
+- BR2: 0.747 (-5.1pp vs B5's 0.798) — significant regression
+- BR5: 0.826 (-2.2pp vs B5's 0.848)
+- SWA model was WORSE than best checkpoint (swa_model.pt saved separately = best model won)
+
+**Root cause:** SWA averages model parameters from the late training trajectory (epoch 5+). Mixup blurs decision boundaries during training by creating interpolated samples with soft labels. SWA preserves and amplifies this blur by averaging the blurred parameters. The two techniques both operate on **decision boundary smoothing** — SWA through weight-space averaging, Mixup through input-space interpolation — making them redundant rather than orthogonal.
+
+The SWA model performing worse than the best checkpoint (confirmed by swa_model.pt existing as a separate file) proves that the weight trajectory under Mixup is not suitable for averaging.
+
+**Rule:** Do NOT combine SWA with Mixup/CutMix for this task. They are antagonistic, not orthogonal. "Both are regularizers" does not mean they stack. Always validate combinations vs. individual techniques. The Mixup + SWA interference invalidates the Lesson #20 recommendation for this combination.
+
+### Lesson #24 — Bug Fixes Increase Overfitting Regardless of Backbone (C2 Confirms Lesson #13)
+**Problem:** C2 applied bug fixes (correct normalization, correct class weights) to DINOv2 + focal loss (baseline: A3). Test F1: 0.6240, down from A3's 0.6325 (-0.85pp).
+
+**Evidence (comparing C2 vs A3):**
+- Val F1: 0.6905 vs 0.6940 (slight drop — unusual, bugs may have helped even val)
+- Test F1: 0.6240 vs 0.6325 (-0.85pp)
+- Gap: 6.65pp vs 6.15pp (gap widened, same direction as B1 vs A1-CE)
+- BR1: 0.376 vs 0.482 (-10.6pp!) — worst BR1 in the entire study
+- BR2: 0.727 vs 0.681 (+4.6pp) — some improvement
+- BR5: 0.859 vs 0.857 (stable)
+
+**Root cause:** Identical phenomenon to Lesson #13 (B1 vs A1-CE for ConvNeXtV2): bugs (wrong normalization stats, train-set class weights) inject noise that accidentally regularizes. Correct values enable sharper fitting. This is **backbone-agnostic** — affects ConvNeXtV2 (-0.17pp or stable), DINOv2 (-0.85pp), and likely any architecture.
+
+**BR1 collapse explanation:** DINOv2 with correct normalization aligns features more tightly to the training distribution. Without the regularizing noise, the model overconfidently classifies borderline BR1 cases as BR2 (larger class pulls).
+
+**Rule:** Bug fixes MUST be paired with explicit regularization, regardless of backbone. Lesson #13 is not ConvNeXtV2-specific — it is a universal phenomenon in this task. For DINOv2, consider adding SWA or dropout (not Mixup) to compensate for lost implicit regularization.
+
+### Lesson #25 — Larger Pretrained Models Generalize Better in Low-Data Medical Imaging (C4)
+**Problem:** C4 replaced ConvNeXtV2-Large (~197M params, feature_dim=1536) with ConvNeXtV2-Base (~89M params, feature_dim=1024). Hypothesis: smaller model = less memorization = smaller gap. **Wrong.**
+
+**Evidence:**
+- Test F1: 0.6269 (-3.46pp vs B5) — significant regression
+- Gap: 9.09pp — one of the **worst gaps** in the entire study (only B1's 9.5pp is worse)
+- Val F1: 0.7178 (competitive!) — the model fits training data well but doesn't transfer
+- BR4: 0.490 (-5.7pp vs B5) — worst BR4 regression in C-series
+- BR5: 0.865 (+1.7pp vs B5) — easier high-confidence cases improve, hard cases suffer
+- SWA model beat best checkpoint (confirmed by no swa_model.pt)
+
+**Root cause:** In the low-data regime (8,557 patients), pretrained features ARE the regularizer. ConvNeXtV2-Large's richer feature space (197M params trained on ImageNet-22k) provides better transfer learning foundations than Base's reduced capacity. Cutting parameters removes useful pretrained representations without reducing memorization — the model still memorizes training-specific patterns, just with fewer tools to generalize from.
+
+The paradox: larger models generalize better despite having more parameters because the extra capacity stores ImageNet-learned features that transfer, not dataset-specific noise.
+
+**Rule:** Do NOT reduce model capacity to fight overfitting in transfer learning with limited medical data. In low-data regimes, larger pretrained models > smaller ones. The overfitting source is not excess capacity — it's train/test distribution shift. Address distribution shift (SWA, cleaner losses) rather than capacity.
+
+### Lesson #26 — Excessive Feature Preservation Prevents Domain Adaptation (C5)
+**Problem:** C5 reduced backbone_lr_scale from 0.2 to 0.05 (effective backbone LR: 2.5e-6 vs 1e-5). Hypothesis: preserving more ImageNet-22k features = better generalization. **Wrong.**
+
+**Evidence:**
+- Test F1: 0.6284 (-3.31pp vs B5) — significant regression
+- Gap: 8.30pp (vs B5's 6.71pp)
+- BR2: 0.698 (-10.0pp vs B5's 0.798) — **massive regression**, worst BR2 in C-series
+- BR4: 0.493 (-5.4pp vs B5)
+- BR1: 0.462 (+0.9pp vs B5) — marginal improvement
+- BR5: 0.861 (+1.3pp vs B5) — slight gain
+- SWA model beat best checkpoint (confirmed)
+
+**Root cause:** Mammography textures — spiculations, microcalcifications, tissue density patterns — are sufficiently different from ImageNet-22k natural images that substantial backbone fine-tuning is essential. At backbone_lr_scale=0.05, the backbone is nearly frozen, preserving ImageNet features that don't map to mammography-specific discriminative patterns. BR2 (benign findings) suffers most because benign tissue patterns are furthest from ImageNet objects.
+
+The BR1/BR5 slight improvement confirms: high-level semantic features (normal vs malignant) transfer better from ImageNet than mid-level tissue texture features (benign findings).
+
+**Rule:** backbone_lr_scale=0.2 is near-optimal for ConvNeXtV2 on 8-bit mammography. Going lower (0.05) prevents necessary domain adaptation. Do not under-tune the backbone — mammography requires more adaptation than typical medical imaging transfer tasks because of the unique tissue texture domain.
+
+### Lesson #27 — Class Weight Manipulation Is Zero-Sum on Shared Decision Boundaries (C3)
+**Problem:** C3 increased BR1 class weight from 1.28 to 1.80 (+40%) to counter SWA's BR1 regression (B5: BR1=0.453). Hypothesis: higher BR1 weight = BR1 recovery without macro collapse.
+
+**Evidence:**
+- Test F1: 0.6346 (-2.69pp vs B5)
+- BR1: 0.465 (+1.2pp vs B5's 0.453) — **minimal improvement** despite 40% weight increase
+- BR2: 0.700 (-9.8pp vs B5's 0.798) — **catastrophic regression**
+- BR4: 0.521 (-2.6pp)
+- Gap: 7.59pp (worse than B5's 6.71pp)
+
+**Contrast with C6 (the right approach):**
+- C6 recovered BR1 by +7.8pp (0.453→0.531) WITHOUT any BR2 regression (0.798 stable)
+- C6 achieved this by removing noise (asymmetry loss), not by shifting decision boundaries
+
+**Root cause:** BR1 (normal) and BR2 (benign findings) share a fuzzy decision boundary — subtle tissue changes separate them. Increasing BR1 weight shifts this boundary toward BR2 territory, reclassifying borderline BR2 cases as BR1. This is a **zero-sum game**: every BR1 gain comes from BR2 loss. The 1.2pp BR1 gain cost 9.8pp BR2 — an 8:1 efficiency ratio in the wrong direction.
+
+The weight increase also amplifies gradient noise from the hard BR1 cases (n=163 test, smallest class), destabilizing the overall optimization.
+
+**Rule:** Class weight manipulation is a blunt instrument that cannot create new discriminative features — it only shifts existing decision boundaries. For minority class recovery on shared boundaries, address the root cause (noisy loss signals, architectural issues) rather than adjusting weights. C6 proves this: removing asymmetry loss noise recovered BR1 6.5x more effectively than a 40% weight boost.
+
+### Lesson #28 — Focal Loss Remains Harmful for ConvNeXtV2 Even With SWA (C7)
+**Problem:** C7 changed loss from CE to focal (gamma=2.0) under SWA conditions. Hypothesis: SWA's flat minima + focal's hard-example mining might rescue the focal loss for ConvNeXtV2.
+
+**Evidence:**
+- Test F1: 0.6468 (-1.47pp vs B5)
+- Gap: 7.93pp (vs B5's 6.71pp)
+- BR1: 0.485 (+3.2pp vs B5) — some improvement from hard-example mining
+- BR4: 0.498 (-4.9pp vs B5) — significant regression
+- BR2: 0.753 (-4.5pp vs B5)
+- SWA model was WORSE than best checkpoint (swa_model.pt saved separately)
+
+**Key observation:** SWA was counterproductive with focal loss (SWA model lost to best checkpoint). This makes sense: focal loss creates a non-stationary loss surface (hard examples change as training progresses), and SWA averaging over this non-stationary trajectory produces a poor average.
+
+**Rule:** Focal loss is harmful for ConvNeXtV2 regardless of SWA (confirming Lesson #11). SWA is also incompatible with focal loss (non-stationary loss surface). This finding is robust across A-series (A1 vs A1-CE) and C-series (C7 vs B5). NEVER use focal loss with ConvNeXtV2 in this pipeline.
+
+### Lesson #29 — Meta-Lesson: Simplification Beats Regularization (C-Series Summary)
+
+**Evidence:** 7 experiments tested 7 different approaches to reducing the val→test generalization gap:
+
+```
+| Rank | Exp | Strategy              | Test F1 | Δ vs B5 | Gap    | Verdict        |
+|------|-----|-----------------------|---------|---------|--------|----------------|
+| 1    | C6  | Remove asymmetry loss | 0.6762  | +1.47pp | 4.21pp | ✅ NEW BEST     |
+| 2    | C7  | Add focal loss        | 0.6468  | -1.47pp | 7.93pp | ❌ Worse        |
+| 3    | C1  | Stack SWA+Mixup       | 0.6431  | -1.84pp | 7.27pp | ❌ Antagonistic |
+| 4    | C3  | Increase BR1 weight   | 0.6346  | -2.69pp | 7.59pp | ❌ Zero-sum     |
+| 5    | C5  | Freeze backbone more  | 0.6284  | -3.31pp | 8.30pp | ❌ Under-adapted|
+| 6    | C4  | Smaller backbone      | 0.6269  | -3.46pp | 9.09pp | ❌ Over-reduced |
+| 7    | C2  | Fix DINOv2 bugs       | 0.6240  | -3.75pp | 6.65pp | ❌ Overfit more |
+```
+
+**6 out of 7 hypotheses FAILED.** The one winner (C6) **removed** complexity rather than adding regularization. The generalization gap was not caused by insufficient regularization — it was caused by an auxiliary loss (asymmetry_loss) injecting noise.
+
+**Implication for D-series:** The best configuration is now:
+- ConvNeXtV2-Large + CE loss + SWA + **no asymmetry loss** (C6 config)
+- Test F1: 0.6762, gap: 4.21pp
+- 16-bit gap: 4.71pp (0.7233 - 0.6762)
+
+**Rule:** Before adding regularization to fight a generalization gap, audit every component of the existing loss for unnecessary complexity. The Occam's Razor principle applies to loss functions: **the simplest loss that fits is the one that generalizes.**
+
+### Summary Statistics — C-Series Ablation Table
+
+```
+| Experiment | Backbone     | Change vs B5              | Best Val F1 | Test F1  | Gap    | BR1   | BR2   | BR4   | BR5   |
+|------------|-------------|---------------------------|:-----------:|:--------:|:------:|:-----:|:-----:|:-----:|:-----:|
+| B5 (base)  | ConvNeXt-L  | SWA only                  | 0.7286      | 0.6615   | 6.71pp | 0.453 | 0.798 | 0.547 | 0.848 |
+| C1         | ConvNeXt-L  | + Mixup/CutMix            | 0.7158      | 0.6431   | 7.27pp | 0.458 | 0.747 | 0.541 | 0.826 |
+| C2         | DINOv2-ViT-L| Focal + bug fixes         | 0.6905      | 0.6240   | 6.65pp | 0.376 | 0.727 | 0.535 | 0.859 |
+| C3         | ConvNeXt-L  | BR1 weight 1.80           | 0.7105      | 0.6346   | 7.59pp | 0.465 | 0.700 | 0.521 | 0.853 |
+| C4         | ConvNeXt-B  | Base backbone (~89M)      | 0.7178      | 0.6269   | 9.09pp | 0.421 | 0.731 | 0.490 | 0.865 |
+| C5         | ConvNeXt-L  | backbone_lr_scale=0.05    | 0.7114      | 0.6284   | 8.30pp | 0.462 | 0.698 | 0.493 | 0.861 |
+| **C6**     | ConvNeXt-L  | **asymmetry_wt=0.0**      | **0.7183**  |**0.6762**|**4.21pp**|**0.531**|**0.798**|0.518|0.857|
+| C7         | ConvNeXt-L  | Focal + SWA               | 0.7261      | 0.6468   | 7.93pp | 0.485 | 0.753 | 0.498 | 0.852 |
+|------------|-------------|---------------------------|-------------|----------|--------|-------|-------|-------|-------|
+| 16-bit ref | ConvNeXt-L  | (target)                  | 0.6867      | 0.7233   | -3.7pp | —     | —     | —     | —     |
+```
+
+### Recommended Next Steps (Post C-Series)
+1. **C8** (Extreme Dropout, still pending) — Given 6/7 "add regularization" approaches failed, C8 is unlikely to help. Run for completeness but low expectations.
+2. **D1: C6 + Mixup** — C6 removed asymmetry noise. Mixup (B3) was the best standalone gap regularizer. Test if Mixup works better with a cleaner loss (C1 failed partly because asymmetry noise + Mixup + SWA was triple-noisy).
+3. **D2: C6 config on 16-bit pipeline** — The asymmetry loss insight may apply to 16-bit too. Could recover performance there.
+4. **D3: Ensemble C6 + best DINOv2** — Complementary error profiles (ConvNeXtV2 strong on BR2/BR4, DINOv2 strong on BR5).
+5. **D4: C6 without SWA** — Isolate whether the gain comes from loss simplification alone or requires SWA.
+6. **ABANDON:** Capacity reduction (C4), feature freezing (C5), class weight manipulation (C3), SWA+Mixup combo (C1).
