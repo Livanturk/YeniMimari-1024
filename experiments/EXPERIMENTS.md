@@ -2,7 +2,7 @@
 
 > Otomatik oluşturulmuştur. `python scripts/report.py index` ile güncellenir.
 
-Son güncelleme: 2026-04-12
+Son güncelleme: 2026-04-14
 
 | Durum | Deney | Tarih | Val F1 | Test F1 | Backbone | Baseline |
 |:---:|---|---|:---:|:---:|---|---|
@@ -26,13 +26,13 @@ Son güncelleme: 2026-04-12
 | ✅ | [convnextv2_large_8bit_ablation_c6](convnextv2_large_8bit_ablation_c6/report.md) | 2026-04-12 | 0.7183 | **0.6762** | `convnextv2_large` | `convnextv2_large_8bit_ablation_b5` |
 | ✅ | [convnextv2_large_8bit_ablation_c7](convnextv2_large_8bit_ablation_c7/report.md) | 2026-04-12 | 0.7261 | 0.6468 | `convnextv2_large` | `convnextv2_large_8bit_ablation_b5` |
 | 📋 | [convnextv2_large_8bit_ablation_c8](convnextv2_large_8bit_ablation_c8/report.md) | 2026-04-11 | — | — | `convnextv2_large` | `convnextv2_large_8bit_ablation_b5` |
-| 📋 | [convnextv2_large_8bit_ablation_d1](convnextv2_large_8bit_ablation_d1/report.md) | 2026-04-12 | — | — | `convnextv2_large` | `convnextv2_large_8bit_ablation_c6` |
-| 📋 | [convnextv2_large_8bit_ablation_d2](convnextv2_large_8bit_ablation_d2/report.md) | 2026-04-12 | — | — | `convnextv2_large` | `convnextv2_large_8bit_ablation_c6` |
-| 📋 | [convnextv2_large_8bit_ablation_d3](convnextv2_large_8bit_ablation_d3/report.md) | 2026-04-12 | — | — | `convnextv2_large` | `convnextv2_large_8bit_ablation_c6` |
-| 📋 | [convnextv2_large_8bit_ablation_d4](convnextv2_large_8bit_ablation_d4/report.md) | 2026-04-12 | — | — | `convnextv2_large` | `convnextv2_large_8bit_ablation_c6` |
-| 📋 | [dinov2_vitl_8bit_ablation_d5](dinov2_vitl_8bit_ablation_d5/report.md) | 2026-04-12 | — | — | `vit_large_patch14_dinov2` | `dinov2_vitl_8bit_ablation_c2` |
-| 📋 | [convnextv2_large_8bit_ablation_d6](convnextv2_large_8bit_ablation_d6/report.md) | 2026-04-12 | — | — | `convnextv2_large` | `convnextv2_large_8bit_ablation_c6` |
-| 📋 | [convnextv2_large_8bit_ablation_d7](convnextv2_large_8bit_ablation_d7/report.md) | 2026-04-12 | — | — | `convnextv2_large` | `convnextv2_large_8bit_ablation_c6` |
+| ✅ | [convnextv2_large_8bit_ablation_d1](convnextv2_large_8bit_ablation_d1/report.md) | 2026-04-14 | 0.7138 | 0.6563 | `convnextv2_large` | `convnextv2_large_8bit_ablation_c6` |
+| ✅ | [convnextv2_large_8bit_ablation_d2](convnextv2_large_8bit_ablation_d2/report.md) | 2026-04-14 | 0.7147 | 0.6453 | `convnextv2_large` | `convnextv2_large_8bit_ablation_c6` |
+| ✅ | [convnextv2_large_8bit_ablation_d3](convnextv2_large_8bit_ablation_d3/report.md) | 2026-04-14 | 0.7237 | 0.6476 | `convnextv2_large` | `convnextv2_large_8bit_ablation_c6` |
+| ✅ | [convnextv2_large_8bit_ablation_d4](convnextv2_large_8bit_ablation_d4/report.md) | 2026-04-14 | 0.7109 | 0.6615 | `convnextv2_large` | `convnextv2_large_8bit_ablation_c6` |
+| ✅ | [dinov2_vitl_8bit_ablation_d5](dinov2_vitl_8bit_ablation_d5/report.md) | 2026-04-14 | 0.6925 | 0.6383 | `vit_large_patch14_dinov2` | `dinov2_vitl_8bit_ablation_c2` |
+| ✅ | [convnextv2_large_8bit_ablation_d6](convnextv2_large_8bit_ablation_d6/report.md) | 2026-04-14 | 0.7249 | 0.6353 | `convnextv2_large` | `convnextv2_large_8bit_ablation_c6` |
+| ✅ | [convnextv2_large_8bit_ablation_d7](convnextv2_large_8bit_ablation_d7/report.md) | 2026-04-14 | 0.7159 | 0.6563 | `convnextv2_large` | `convnextv2_large_8bit_ablation_c6` |
 | 🔄 | [swinv2_base_8bit_ablation_a2](swinv2_base_8bit_ablation_a2/report.md) | 2026-04-09 | 0.6013* | — | `swinv2_base_window12to24_192to384` | `convnextv2_large_8bit_ablation_a1` |
 | 📋 | [swinv2_base_cosine_v1](swinv2_base_cosine_v1/report.md) | 2026-04-05 | — | — | `swinv2_base_window12to24_192to384` | `swinv2_base_v4` |
 | 📋 | [swinv2_base_focal_asymmetry_v1](swinv2_base_focal_asymmetry_v1/report.md) | 2026-04-05 | — | — | `swinv2_base_window12to24_192to384` | `swinv2_base_focal_v1` |

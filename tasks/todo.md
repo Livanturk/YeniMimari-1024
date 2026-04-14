@@ -1,6 +1,6 @@
 # 8-bit BI-RADS Ablation Study — Master Task Tracker
 
-> Last updated: 2026-04-12
+> Last updated: 2026-04-14
 
 ---
 
@@ -27,7 +27,7 @@
 - Mixup/CutMix best gap regularizer — Lesson #15
 - CORAL ordinal dead for non-contiguous BI-RADS — Lesson #16
 - SWA best absolute test F1 but BR1 regressed -7.3pp — Lesson #17
-- 8-bit vs 16-bit gap remains 6.2pp (0.6615 vs 0.7233) — Lesson #19
+
 
 ## C-Series: Combinations & Targeted Regularization (PLANNED)
 
@@ -95,80 +95,71 @@
 
 ---
 
-## D-Series: Loss Simplification & Component Isolation (PLANNED)
+## D-Series: Loss Simplification & Component Isolation (COMPLETED)
 
 > Baseline: **C6** (CE + SWA + no asymmetry, test F1=0.6762, gap=4.21pp)
 > Principle: Lesson #29 — Simplification > Regularization
+> **Result: ALL 7 experiments below C6. C6 confirmed as Goldilocks configuration.**
 
 ### Tier 1: Auxiliary Head Ablation Cascade (baseline: C6)
 
 #### D1: No Subgroup Heads (~17h)
 - [x] Create config: `convnextv2_large_8bit_ablation_d1.yaml`
 - [x] Create report stub: `experiments/convnextv2_large_8bit_ablation_d1/report.md`
-- [ ] Run experiment: `python train.py --config configs/experiment_v2_birads/convnextv2_large_8bit_ablation_d1.yaml`
-- [ ] Analyze results — subgroup loss (0.45 wt) is noise or useful signal?
+- [x] Run experiment — val 0.7138, test **0.6563** (gap 5.75pp)
+- [x] Analyze: subgroup head IS helpful, -1.99pp vs C6. SWA LOST. (Lesson #30)
 
 #### D2: No Binary Head (~17h)
 - [x] Create config: `convnextv2_large_8bit_ablation_d2.yaml`
 - [x] Create report stub: `experiments/convnextv2_large_8bit_ablation_d2/report.md`
-- [ ] Run experiment: `python train.py --config configs/experiment_v2_birads/convnextv2_large_8bit_ablation_d2.yaml`
-- [ ] Analyze results — backbone gradient shortcut helpful or harmful?
+- [x] Run experiment — val 0.7147, test **0.6453** (gap 6.94pp)
+- [x] Analyze: binary head CRITICAL, -3.09pp vs C6 (3x above weight). SWA LOST. (Lesson #31)
 
 #### D3: Pure L_full Only (~17h)
 - [x] Create config: `convnextv2_large_8bit_ablation_d3.yaml`
 - [x] Create report stub: `experiments/convnextv2_large_8bit_ablation_d3/report.md`
-- [ ] Run experiment: `python train.py --config configs/experiment_v2_birads/convnextv2_large_8bit_ablation_d3.yaml`
-- [ ] Analyze results — maximum Occam's razor: single objective optimal?
+- [x] Run experiment — val 0.7237, test **0.6476** (gap 7.61pp)
+- [x] Analyze: multi-task learning essential, -2.86pp vs C6. SWA WON. (Lesson #30)
 
 ### Tier 2: Component Isolation (baseline: C6)
 
 #### D4: No SWA — SWA Isolation Test (~17h)
 - [x] Create config: `convnextv2_large_8bit_ablation_d4.yaml`
 - [x] Create report stub: `experiments/convnextv2_large_8bit_ablation_d4/report.md`
-- [ ] Run experiment: `python train.py --config configs/experiment_v2_birads/convnextv2_large_8bit_ablation_d4.yaml`
-- [ ] Analyze results — does clean loss alone beat B1 (0.6387)?
+- [x] Run experiment — val 0.7109, test **0.6615** (gap 4.94pp)
+- [x] Analyze: SWA worth +1.47pp. D4=B5=0.6615 exactly — clean loss = dirty+SWA. (Lesson #32)
 
 ### Tier 3: DINOv2 Rescue (baseline: C2)
 
 #### D5: DINOv2 + Focal + SWA + No Asymmetry (~8h)
 - [x] Create config: `dinov2_vitl_8bit_ablation_d5.yaml`
 - [x] Create report stub: `experiments/dinov2_vitl_8bit_ablation_d5/report.md`
-- [ ] Run experiment: `python train.py --config configs/experiment_v2_birads/dinov2_vitl_8bit_ablation_d5.yaml`
-- [ ] Analyze results — does SWA + clean loss rescue DINOv2? Target: >= 0.65
+- [x] Run experiment — val 0.6925, test **0.6383** (gap 5.42pp)
+- [x] Analyze: +1.43pp vs C2 but below 0.65 target. DINOv2 track abandoned. (Lesson #33)
 
 ### Tier 4: SWA + Mixup Disambiguation (baseline: C6)
 
 #### D6: Mixup Only + No SWA + No Asymmetry (~17h)
 - [x] Create config: `convnextv2_large_8bit_ablation_d6.yaml`
 - [x] Create report stub: `experiments/convnextv2_large_8bit_ablation_d6/report.md`
-- [ ] Run experiment: `python train.py --config configs/experiment_v2_birads/convnextv2_large_8bit_ablation_d6.yaml`
-- [ ] Analyze results — Mixup on clean loss vs B3 (0.6459, dirty loss)
+- [x] Run experiment — val 0.7249, test **0.6353** (gap 8.96pp) — worst gap in D-series
+- [x] Analyze: Mixup -2.62pp vs D4 (no Mixup). Mixup HARMFUL on clean loss. (Lesson #34)
 
 #### D7: SWA + Mixup + No Asymmetry — C1 Retest (~17h)
 - [x] Create config: `convnextv2_large_8bit_ablation_d7.yaml`
 - [x] Create report stub: `experiments/convnextv2_large_8bit_ablation_d7/report.md`
-- [ ] Run experiment: `python train.py --config configs/experiment_v2_birads/convnextv2_large_8bit_ablation_d7.yaml`
-- [ ] Analyze results — was C1's SWA+Mixup antagonism caused by asymmetry noise?
+- [x] Run experiment — val 0.7159, test **0.6563** (gap 5.96pp)
+- [x] Analyze: SWA+Mixup antagonism intrinsic, NOT from asymmetry noise. (Lesson #35)
 
-### D-Series Post-Analysis
-- [ ] Update EXPERIMENTS.md with all D-series results
-- [ ] Update tasks/lessons.md with D-series findings
-- [ ] Decision: If D1 or D3 > C6 → further loss simplification for E-series
-- [ ] Decision: If D4 ~ B1 → SWA is essential; if D4 >> B1 → clean loss alone valuable
-- [ ] Decision: If D5 >= 0.65 → ensemble C6/D-winner + D5 for E-series
-- [ ] Decision: If D7 > C6 → SWA+Mixup work on clean loss (Lesson #23 was confounded)
-- [ ] Decision: Best D-series winner → E-series baseline
-
-### Recommended Run Order
-1. **D5** (DINOv2, ~8h) — fastest, independent backbone
-2. **D1** (No subgroup, ~17h) — highest-weight auxiliary head test
-3. **D3** (Pure L_full, ~17h) — maximum simplification
-4. **D4** (No SWA, ~17h) — critical isolation test
-5. **D7** (SWA+Mixup retest, ~17h) — C1 disambiguation
-6. **D2** (No binary, ~17h) — small-weight head, likely mild effect
-7. **D6** (Mixup only, ~17h) — alternative regularizer path
-
-**Parallel strategy:** Run D5 on GPU-0 first (~8h). Then D1+D3 or D4+D7 as pairs.
+### D-Series Post-Analysis (COMPLETED)
+- [x] Update EXPERIMENTS.md with all D-series results
+- [x] Update tasks/lessons.md with D-series findings (Lessons #30-#37)
+- [x] Decision: D1 (0.6563) & D3 (0.6476) < C6 → ❌ no further loss simplification
+- [x] Decision: D4 (0.6615) >> B1 (0.6387) → ✅ clean loss alone is valuable (+2.28pp)
+- [x] Decision: D4 (0.6615) < C6 (0.6762) → ✅ SWA is essential (+1.47pp on top)
+- [x] Decision: D5 (0.6383) < 0.65 → ❌ ensemble path abandoned
+- [x] Decision: D7 (0.6563) < C6 → ❌ SWA+Mixup antagonism NOT confounded
+- [x] Decision: No D-series winner beats C6 → **C6 remains E-series baseline**
 
 ---
 
@@ -176,25 +167,24 @@
 
 | Experiment | Best Val F1 | Test F1 | Gap | BR1 | BR2 | BR4 | BR5 |
 |-----------|:-----------:|:-------:|:---:|:---:|:---:|:---:|:---:|
-| 16-bit ref | 0.6867 | **0.7233** | -3.7pp | — | — | — | — |
 | **C6 (best 8-bit)** | **0.7183** | **0.6762** | **4.21pp** | **0.531** | **0.798** | 0.518 | 0.857 |
+| D4 (clean, no SWA) | 0.7109 | 0.6615 | 4.94pp | 0.500 | 0.757 | 0.542 | 0.847 |
 | B5 (prev best) | 0.7286 | 0.6615 | 6.71pp | 0.453 | 0.798 | 0.547 | 0.848 |
-| B3 (Mixup) | 0.7193 | 0.6459 | 7.34pp | 0.513 | 0.732 | 0.489 | 0.850 |
 | B1 (baseline) | 0.7334 | 0.6387 | 9.47pp | 0.526 | 0.675 | 0.498 | 0.856 |
 
-**Progress:** 16-bit gap narrowed from 6.18pp (B5) to **4.71pp** (C6). Key insight: removing asymmetry loss was more effective than any added regularization.
+**Progress:** C6 (test F1=0.6762, gap=4.21pp) confirmed as optimal 8-bit configuration after D-series. All 7 D-series experiments scored below C6. Key finding: D4=B5=0.6615 exactly — clean loss alone matches dirty loss + SWA.
 
-## D-Series Experiment Design Overview
+## D-Series Results Overview
 
-| Experiment | Strategy | Variable vs C6 | Hypothesis |
-|---|---|---|---|
-| D1 | Loss simplification | use_subgroup_head=false | Subgroup loss (0.45 wt) may be noise like asymmetry |
-| D2 | Loss simplification | use_binary_head=false | Binary gradient shortcut — helpful or harmful? |
-| D3 | Loss simplification | No subgroup + no binary | Maximum Occam's razor: single L_full objective |
-| D4 | SWA isolation | use_swa=false | Is C6's gain from clean loss alone, or SWA synergy? |
-| D5 | DINOv2 rescue | +SWA, -asymmetry (from C2) | Apply winning insights to DINOv2 → ensemble path |
-| D6 | Mixup alternative | +Mixup, -SWA | Mixup on clean loss vs SWA on clean loss |
-| D7 | C1 disambiguation | +Mixup (SWA kept) | Was SWA+Mixup antagonism from asymmetry noise? |
+| Experiment | Strategy | Variable vs C6 | Test F1 | Δ vs C6 | Gap | Verdict |
+|---|---|---|:---:|:---:|:---:|---|
+| D4 | SWA isolation | use_swa=false | 0.6615 | -1.47pp | 4.94pp | SWA essential (+1.47pp) |
+| D1 | Loss simplification | -subgroup_head | 0.6563 | -1.99pp | 5.75pp | Subgroup head helpful |
+| D7 | C1 disambiguation | +Mixup (SWA kept) | 0.6563 | -1.99pp | 5.96pp | Antagonism intrinsic |
+| D3 | Loss simplification | -subgroup -binary | 0.6476 | -2.86pp | 7.61pp | Multi-task essential |
+| D2 | Loss simplification | -binary_head | 0.6453 | -3.09pp | 6.94pp | Binary head critical |
+| D5 | DINOv2 rescue | +SWA, -asymmetry | 0.6383 | -3.79pp | 5.42pp | Architecture gap persists |
+| D6 | Mixup alternative | +Mixup, -SWA | 0.6353 | -4.09pp | 8.96pp | Mixup harmful on clean loss |
 
 ## C-Series Results Overview
 
@@ -207,4 +197,4 @@
 | C5 | Feature preservation | backbone_lr=0.05 | 0.6284 | 8.30pp | Under-adapted, BR2 collapsed |
 | C4 | Capacity | Base backbone (~89M) | 0.6269 | 9.09pp | Larger model better in low-data |
 | C2 | Backbone rescue | DINOv2 + Focal + fixes | 0.6240 | 6.65pp | Bug fixes hurt DINOv2 too |
-| C8 | Explicit dropout | clf=0.7, proj=0.4 | *pending* | — | Low expectations given C-series pattern |
+| C8 | Explicit dropout | clf=0.7, proj=0.4 | *pending* | — | Low expectations given C/D-series pattern |
