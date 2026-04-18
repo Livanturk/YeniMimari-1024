@@ -10,3 +10,4 @@ Dataset_Test_1024_16bit/
 wandb/
 mlflow.db
 __pycache__/
+mlruns/
