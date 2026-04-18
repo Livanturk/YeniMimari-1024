@@ -25,11 +25,12 @@ Klasör Yapısı:
     BI-RADS klasör adı → sınıf etiketi dönüşümü:
         BI-RADS_1 → 0, BI-RADS_2 → 1, BI-RADS_4 → 2, BI-RADS_5 → 3
 
-16-bit PNG Desteği:
-    - bit_depth=16 modunda PIL mode "I;16" olarak açılır.
-    - numpy float32'ye dönüştürülüp [0, 65535] → [0, 1] normalize edilir.
-    - 3 kanala kopyalanarak (3, H, W) tensor'e çevrilir.
+Bit Derinliği Desteği (8-bit ve 16-bit):
+    - bit_depth=8:  PIL mode "L" (uint8) → [0, 255] → /255 → [0, 1]
+    - bit_depth=16: PIL mode "I;16" (uint16) → [0, 65535] → /65535 → [0, 1]
+    - Her iki modda da 3 kanala kopyalanarak (3, H, W) float32 tensor üretilir.
     - Transform'lar tensor üzerinde çalışır (torchvision.transforms.v2).
+    - Normalizasyon istatistikleri bit_depth'e göre otomatik seçilir (transforms.py).
 """
 
 import os
@@ -75,7 +76,7 @@ class MammographyDataset(Dataset):
         labels: List[int],
         transform=None,
         view_names: List[str] = None,
-        bit_depth: int = 16,
+        bit_depth: int = 8,
     ):
         assert len(patient_dirs) == len(labels), (
             f"Hasta sayısı ({len(patient_dirs)}) ve etiket sayısı ({len(labels)}) eşleşmiyor!"
@@ -347,7 +348,7 @@ def create_dataloaders(
     """
     data_cfg = config["data"]
     train_cfg = config["training"]
-    bit_depth = data_cfg.get("bit_depth", 16)
+    bit_depth = data_cfg.get("bit_depth", 8)
 
     # Veri setini böl (train/val root_dir'den, test ayrı test_dir'den)
     splits = prepare_patient_split(

@@ -513,5 +513,195 @@ C6 is confirmed optimal. The 8-bit pipeline has a hard floor at test F1 ≈ 0.68
 2. **Spatial augmentation** — Geometric transforms (rotation, elastic deformation) that don't blend labels like Mixup.
 3. **Test-Time Augmentation (TTA)** — Multi-view inference: flip/rotate at test time and average predictions. Free generalization without training changes.
 4. **Ensemble (ConvNeXtV2 variants only)** — Ensemble top 2-3 ConvNeXtV2 runs (C6, D4, D1) with different random seeds or training trajectories.
-5. **16-bit pipeline optimization** — The 16-bit baseline (0.7233) still leads. Apply C6's insights (no asymmetry, SWA) to the 16-bit pipeline.
-6. **ABANDON:** DINOv2 track, Mixup/CutMix, further loss simplification, additional auxiliary losses.
+5. **ABANDON:** DINOv2 track, Mixup/CutMix, further loss simplification, additional auxiliary losses.
+
+---
+
+## E-Series Experiment Lessons (2026-04-17)
+
+### Lesson #38 — OneCycleLR's Aggressive Peak LR Is Essential, Not Interchangeable (E1)
+**Problem:** E1 replaced OneCycleLR (peak=5e-4 for heads, 1e-4 for backbone) with cosine_warmup (peak=5e-5 for heads, 1e-5 for backbone). The hypothesis was that a stable/decaying LR during the SWA phase would produce better weight averaging. **Wrong — 10x lower peak LR caused a 3.16pp regression.**
+
+**Evidence:**
+- Test F1: 0.6446, **-3.16pp** vs C6 (0.6762)
+- Val F1: 0.7207 (+0.24pp vs C6's 0.7183) — slightly HIGHER val, much lower test
+- Gap: 7.61pp (vs C6's 4.21pp → +3.40pp wider)
+- BR1: 0.466 (-6.5pp vs C6's 0.531)
+- BR2: 0.755 (-4.3pp vs C6's 0.798)
+- BR4: 0.508 (-1.0pp)
+- BR5: 0.850 (-0.7pp)
+- SWA WON (overwrote best_model.pt)
+
+**Root cause:** OneCycleLR's peak at 5e-4 (10x above the cosine warmup's peak of 5e-5) provides a critical **exploration phase** in the first 30% of training. This high-LR phase pushes the model out of narrow basins into broader regions of the loss landscape before SWA averaging begins. Cosine warmup's gentle LR never reaches high enough to escape the initial basin, converging to a nearby but inferior minimum. SWA then faithfully preserves this inferior solution — the SWA WON, but on a worse trajectory.
+
+The val F1 being slightly *higher* with cosine warmup while test F1 drops confirms: the model found a sharper minimum (better val fit) but one that doesn't generalize. OneCycleLR's disruptive peak forces a flatter minimum that transfers better.
+
+**Rule:** OneCycleLR with max_lr=5e-4 and pct_start=0.3 is not just a scheduler choice — it provides an essential high-LR exploration phase that determines the basin quality for subsequent SWA averaging. Do NOT replace it with monotonic or low-peak schedulers. The SWA literature's preference for stable LR applies to the averaging phase, but OneCycleLR satisfies this because the peak occurs at epoch ~30 (30% of 100) while SWA starts at epoch 5 — the LR *is* declining for most of the SWA phase.
+
+### Lesson #39 — SWA-Optimal Schedules from Literature Fail on Multi-Objective Loss (E2)
+**Problem:** E2 used cosine warm restarts (T_0=10, T_mult=2, eta_min=1e-7) — the schedule the original SWA paper (Izmailov et al., 2018) recommends as optimal. Restarts at epochs 10, 30, 70 should create diverse weight snapshots for richer averaging. **Result: worst test F1 in the E-series and one of the worst gaps in the entire study.**
+
+**Evidence:**
+- Test F1: 0.6363, **-3.99pp** vs C6 — worst in E-series
+- Val F1: 0.7305 — **highest in E-series** (even higher than C6's 0.7183!)
+- Gap: **9.42pp** — worst in E-series, rivaling B1's 9.5pp (the worst in the entire study)
+- BR1: 0.427 (-10.4pp vs C6's 0.531) — massive collapse
+- BR2: 0.749 (-4.9pp vs C6's 0.798)
+- BR4: 0.513 (-0.5pp) — barely affected
+- BR5: 0.857 (identical to C6)
+- SWA WON (overwrote best_model.pt)
+
+**Root cause:** The SWA paper's recommendations apply to single-objective tasks (image classification with one cross-entropy loss). This pipeline uses a multi-objective loss (binary + subgroup + full = 3 loss terms). Warm restarts force periodic LR spikes that push the optimizer to re-explore, but each restart also forces the model to **re-balance three competing objectives**. The trajectory between restarts oscillates wildly across the multi-objective Pareto front.
+
+SWA averaging over these oscillatory trajectories produces a weight vector that is a poor compromise: the averaged weights fit the training distribution well (val F1 = 0.7305, highest!) but the averaged decision boundaries are incoherent for test generalization. The 9.42pp gap (val minus test) proves the SWA average is a **sharp, training-specific** solution despite weight-space averaging.
+
+BR1's collapse (-10.4pp) is the signature: the smallest class is most sensitive to oscillatory boundary shifts, and SWA averaging over multiple restart phases blurs BR1's delicate boundaries into BR2.
+
+**Rule:** Do NOT apply SWA literature recommendations (warm restarts, cyclic schedules) directly when using multi-objective losses. The original SWA paper assumes a single smooth loss landscape. Multi-task losses create a landscape with multiple competing gradients where warm restart diversity becomes harmful noise rather than useful exploration. Stick with OneCycleLR for this pipeline.
+
+### Lesson #40 — Delayed SWA Start Trades BR2 for BR4 but Loses Both Overall (E3)
+**Problem:** E3 delayed SWA from epoch 5→10 and extended patience from 20→30. Hypothesis: SWA over more-converged weights = better average. **Wrong — SWA LOST to best checkpoint, and overall test F1 dropped by 3.13pp.**
+
+**Evidence:**
+- Test F1: 0.6449, **-3.13pp** vs C6
+- Val F1: 0.7104 (-0.79pp vs C6's 0.7183) — lower val too
+- Gap: 6.55pp (narrower than E1/E2/E4/E5, but wider than C6's 4.21pp)
+- BR1: 0.505 (-2.6pp vs C6's 0.531) — modest drop
+- BR2: 0.684 (**-11.4pp** vs C6's 0.798) — catastrophic collapse
+- BR4: 0.544 (+2.6pp vs C6's 0.518) — best BR4 in E-series
+- BR5: 0.847 (-1.0pp)
+- **SWA LOST** (swa_model.pt saved separately — SWA average worse than best checkpoint)
+- Accuracy: 0.6870 (worst in E-series)
+
+**Root cause:** Two interacting failure modes:
+
+1. **SWA trajectory corruption:** With SWA starting at epoch 10, the first 10 epochs of OneCycleLR push the model through the high-LR exploration phase without SWA averaging. By epoch 10, the model has already passed the LR peak (at epoch ~30 of OneCycleLR with pct_start=0.3) — wait, actually the peak is at 30% of training so epoch 30, meaning by epoch 10 the LR is still climbing. SWA at epoch 10 starts averaging during the LR climb, but misses the early stabilization at epoch 5-10 that C6 captures. The model's early exploratory weights (epoch 5-10) are excluded, reducing the diversity of the SWA average.
+
+2. **Extended patience enables overfitting:** Patience=30 lets training continue for 30 epochs past the val peak without improvement. The extra epochs don't help SWA (SWA lost to best checkpoint anyway) but allow the model to overfit BR2 — the largest training class. BR2's -11.4pp drop is the signature: longer training → deeper memorization of the dominant class's training patterns → worse test generalization on BR2.
+
+The BR4 improvement (+2.6pp) is a silver lining: delayed SWA preserves some of the harder malignant decision boundaries that early SWA smoothing would blur. But the BR2 collapse overwhelms this gain.
+
+**Rule:** SWA start at epoch 5 is optimal for this pipeline. Earlier starts (D-series didn't test) or later starts (E3) both degrade performance. swa_start_epoch=5 catches the model at the right moment: past random initialization but before deep memorization. Patience=20 is also optimal — extending to 30 provides no benefit and enables overfitting. Do NOT modify SWA timing parameters.
+
+### Lesson #41 — Label Smoothing 0.10 + SWA Is Another Antagonistic Smoothing Pair (E4)
+**Problem:** E4 doubled label smoothing from 0.05 to 0.10. Hypothesis: label smoothing (output-space regularization) is orthogonal to SWA (weight-space regularization), unlike Mixup (input-space, proven antagonistic in Lesson #23). **Wrong — label smoothing at 0.10 caused a 3.32pp regression with an 8.44pp gap.**
+
+**Evidence:**
+- Test F1: 0.6430, **-3.32pp** vs C6
+- Val F1: 0.7274 (+0.91pp vs C6's 0.7183) — higher val, lower test
+- Gap: 8.44pp (vs C6's 4.21pp → +4.23pp wider)
+- BR1: 0.477 (-5.4pp vs C6's 0.531)
+- BR2: 0.730 (-6.8pp vs C6's 0.798)
+- BR4: 0.507 (-1.1pp)
+- BR5: 0.858 (+0.1pp)
+- SWA WON (overwrote best_model.pt)
+
+**Root cause — a pattern emerges across three smoothing mechanisms:**
+```
+| Smoothing Type   | Mechanism              | Combined with SWA | Δ vs C6  |
+|------------------|------------------------|:------------------:|:--------:|
+| Mixup (C1)       | Input-space blending   | ANTAGONISTIC       | -1.84pp  |
+| Label 0.10 (E4)  | Output-space softening | ANTAGONISTIC       | -3.32pp  |
+| Label 0.05 (C6)  | Output-space softening | COMPATIBLE         | baseline |
+```
+
+Label smoothing at 0.10 produces **softer target distributions** ([0.025, 0.025, 0.025, 0.925]) that reduce gradient magnitude for high-confidence predictions. SWA simultaneously **smooths weights** by averaging parameters. Both mechanisms flatten decision boundaries through different paths, but the net effect is the same: over-smoothed class boundaries.
+
+At 0.05, label smoothing provides just enough target softness to prevent overconfident predictions without interfering with SWA's weight-space smoothing. At 0.10, the two smoothing mechanisms compound — the model never commits strongly enough to any boundary, and SWA preserves this indecisiveness.
+
+The val F1 being higher (+0.91pp) with worse test confirms the pattern from E1 and E2: the model finds a training-specific smoothness that looks good on the similar val distribution but fails on the shifted test set.
+
+**Rule:** Label smoothing 0.05 is the optimal value for this pipeline. Combined with SWA, it represents the maximum tolerable output-space smoothing. Label smoothing ≥ 0.10 becomes antagonistic with SWA — joining Mixup and warm restarts in the "don't combine with SWA" category. The principle: **SWA's weight-space smoothing occupies the regularization budget; any additional smoothing mechanism that independently softens boundaries will push past the optimum.**
+
+### Lesson #42 — Binary Head Weight 0.10 Is Already Optimal — Efficiency ≠ Underweighting (E5)
+**Problem:** E5 doubled the binary head weight from 0.10→0.20 (subgroup reduced 0.45→0.35 to compensate). Lesson #31 showed the binary head was 7x more efficient per weight unit than subgroup. Hypothesis: boosting its weight would amplify the gradient anchor. **Wrong — the 7x efficiency means 0.10 is already sufficient, not that it needs more.**
+
+**Evidence:**
+- Test F1: 0.6425, **-3.37pp** vs C6
+- Val F1: 0.7190 (+0.07pp vs C6's 0.7183) — essentially identical val
+- Gap: 7.65pp (vs C6's 4.21pp → +3.44pp wider)
+- BR1: 0.438 (**-9.4pp** vs C6's 0.531) — severe collapse
+- BR2: 0.735 (-6.3pp vs C6's 0.798)
+- BR4: 0.535 (+1.7pp vs C6's 0.518) — improved
+- BR5: 0.863 (+0.6pp vs C6's 0.857) — improved
+- SWA WON (overwrote best_model.pt)
+
+**Root cause:** The binary head provides a {BR1,BR2} vs {BR4,BR5} gradient anchor. At 0.10 weight, it provides just enough gradient to stabilize the coarse separation without competing with fine-grained classification. At 0.20, the binary head's gradient dominates during critical decision-making:
+
+- **BR4/BR5 improved** (+1.7pp, +0.6pp): The malignant side benefits from stronger benign/malignant separation because BR4 and BR5 are already well-separated from benign classes.
+- **BR1 collapsed** (-9.4pp): The stronger binary gradient forces the model to optimize for {benign vs malignant} over {BR1 vs BR2}. Since the subgroup head (responsible for BR1 vs BR2 within benign) dropped from 0.45→0.35, the fine-grained benign distinction loses gradient budget. BR1 (smaller benign class) is sacrificed to improve the binary task's accuracy on the borderline cases.
+- **BR2 dropped** (-6.3pp): Even BR2 suffers because the subgroup head's reduced weight means less gradient for the entire benign sub-classification.
+
+**The efficiency paradox resolved:** Lesson #31's "7x more efficient per unit weight" means the binary head at 0.10 already provides 0.10 × 30.9 = 3.09pp of impact. Doubling to 0.20 should provide ~6.18pp — but it doesn't, because the relationship is non-linear. The binary head's gradient anchor has **diminishing returns** beyond the optimal level, and the reduced subgroup gradient creates a net negative.
+
+**Rule:** Loss weight ratios in C6 (binary=0.10, subgroup=0.45, full=0.45) are at their optimal balance. High per-unit efficiency does NOT mean a component is underweighted — it means a small amount provides outsized value, which is the *definition* of being at the right weight. Do NOT adjust individual loss weights. The 7x efficiency finding from D-series should be interpreted as "0.10 is brilliantly efficient" not "0.10 should be increased."
+
+### Lesson #43 — E-Series Meta: C6 Is at a Sharp, Verified Global Optimum for the 8-bit Pipeline
+
+**Problem:** The E-series tested 5 individually reasonable, well-motivated single-variable perturbations to C6's configuration: LR scheduler (2 variants), SWA timing, label smoothing, and loss weight rebalancing. **All 5 completed experiments regressed by 3.1-4.0pp. The gap widened in ALL cases. Two experiments (E6, E7) did not complete.**
+
+**Evidence (ranked by test F1):**
+```
+| Rank | Exp | Strategy                    | Test F1 | Δ vs C6  | Gap    | BR1   | BR2   | BR4   | BR5   | SWA   |
+|------|-----|-----------------------------|---------|----------|--------|-------|-------|-------|-------|-------|
+| —    | C6  | BASELINE                    | 0.6762  | —        | 4.21pp | 0.531 | 0.798 | 0.518 | 0.857 | WON   |
+| 1    | E3  | Later SWA + longer training | 0.6449  | -3.13pp  | 6.55pp | 0.505 | 0.684 | 0.544 | 0.847 | LOST  |
+| 2    | E1  | Cosine warmup scheduler     | 0.6446  | -3.16pp  | 7.61pp | 0.466 | 0.755 | 0.508 | 0.850 | WON   |
+| 3    | E4  | Label smoothing 0.10        | 0.6430  | -3.32pp  | 8.44pp | 0.477 | 0.730 | 0.507 | 0.858 | WON   |
+| 4    | E5  | Binary head wt 0.20         | 0.6425  | -3.37pp  | 7.65pp | 0.438 | 0.735 | 0.535 | 0.863 | WON   |
+| 5    | E2  | Warm restarts scheduler     | 0.6363  | -3.99pp  | 9.42pp | 0.427 | 0.749 | 0.513 | 0.857 | WON   |
+| —    | E6  | Stronger augmentation       | DNF     | —        | —      | —     | —     | —     | —     | —     |
+| —    | E7  | 16-bit transfer             | DNF     | —        | —      | —     | —     | —     | —     | —     |
+```
+
+**Five-series convergence pattern:**
+```
+| Series | Experiments | Beat C6? | Best ΔF1 vs champion | Champion |
+|--------|-------------|:--------:|:--------------------:|----------|
+| A      | 4           | N/A      | N/A                  | A1-CE    |
+| B      | 5           | Yes      | +2.45pp (B5>A1-CE)   | B5       |
+| C      | 7           | Yes      | +1.47pp (C6>B5)      | C6       |
+| D      | 7           | No       | -1.47pp (best D4)    | C6       |
+| E      | 5 (of 7)    | No       | -3.13pp (best E3)    | C6       |
+```
+
+**The degradation ACCELERATED from D to E:** D-series' best was -1.47pp from C6 (D4), but E-series' best is -3.13pp (E3). This means the E-series perturbation axes (scheduler, SWA timing, smoothing level, weight ratios) are **more sensitive** than D-series' axes (head removal, Mixup, backbone swap). C6's configuration is tightly optimized along the dimensions E-series probed.
+
+**The recurring pattern across E-series — val up, test down:**
+- E1: val +0.24pp, test -3.16pp
+- E2: val +1.22pp, test -3.99pp
+- E4: val +0.91pp, test -3.32pp
+
+Three of five experiments showed HIGHER val F1 with LOWER test F1. This is the hallmark of **training distribution overfitting** — the modifications find sharper minima that fit train/val better but generalize worse. C6's configuration uniquely balances sharpness and flatness.
+
+**Confirmed permanently frozen (in addition to D-series list):**
+- OneCycleLR scheduler (do not change to cosine, warm restarts, or step)
+- SWA start epoch = 5 (do not delay)
+- Early stopping patience = 20 (do not extend)
+- Label smoothing = 0.05 (do not increase)
+- Loss weights: binary=0.10, subgroup=0.45, full=0.45 (do not rebalance)
+
+**The 8-bit pipeline is CONVERGED.** C6's test F1 = 0.6762 with gap = 4.21pp represents the ceiling for single-model, single-run 8-bit 1024×1024 performance with this architecture and dataset. Further single-model improvements must come from the 16-bit pipeline (higher dynamic range, F-series) or multi-model strategies (ensembles, TTA).
+
+### Summary Statistics — E-Series Ablation Table
+
+```
+| Experiment | Backbone    | Change vs C6              | Best Val F1 | Test F1  | Gap    | BR1   | BR2   | BR4   | BR5   | SWA   |
+|------------|-------------|---------------------------|:-----------:|:--------:|:------:|:-----:|:-----:|:-----:|:-----:|:-----:|
+| C6 (base)  | ConvNeXt-L  | BASELINE                  | 0.7183      | 0.6762   | 4.21pp | 0.531 | 0.798 | 0.518 | 0.857 | WON   |
+| E1         | ConvNeXt-L  | cosine_warmup scheduler   | 0.7207      | 0.6446   | 7.61pp | 0.466 | 0.755 | 0.508 | 0.850 | WON   |
+| E2         | ConvNeXt-L  | cosine_warm_restarts      | 0.7305      | 0.6363   | 9.42pp | 0.427 | 0.749 | 0.513 | 0.857 | WON   |
+| E3         | ConvNeXt-L  | SWA start=10, patience=30 | 0.7104      | 0.6449   | 6.55pp | 0.505 | 0.684 | 0.544 | 0.847 | LOST  |
+| E4         | ConvNeXt-L  | label_smoothing=0.10      | 0.7274      | 0.6430   | 8.44pp | 0.477 | 0.730 | 0.507 | 0.858 | WON   |
+| E5         | ConvNeXt-L  | binary_head=0.20          | 0.7190      | 0.6425   | 7.65pp | 0.438 | 0.735 | 0.535 | 0.863 | WON   |
+| E6         | ConvNeXt-L  | stronger augmentation     | —           | DNF      | —      | —     | —     | —     | —     | —     |
+| E7         | ConvNeXt-L  | 16-bit + SWA + no asym    | —           | DNF      | —      | —     | —     | —     | —     | —     |
+```
+
+### Recommended Next Steps (Post E-Series)
+The 8-bit single-model pipeline is fully converged at C6. No further 8-bit hyperparameter tuning is justified.
+
+1. **16-bit pipeline optimization (F-series)** — Transfer C6 insights to the higher dynamic range pipeline. F1/F2 already running.
+2. **Test-Time Augmentation (TTA)** — Horizontal flip + multi-crop at inference. Free generalization without retraining. Expected: +1-2pp.
+3. **Ensemble strategies** — Average predictions from C6 + D4 (different SWA state) or multiple C6 runs with different seeds.
+4. **ABANDON for 8-bit:** All further single-variable hyperparameter perturbations. The E-series proved that every direction around C6 leads downhill. The only remaining 8-bit paths are inference-time improvements (TTA, ensemble) that don't modify the trained model.

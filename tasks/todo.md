@@ -1,6 +1,6 @@
 # 8-bit BI-RADS Ablation Study — Master Task Tracker
 
-> Last updated: 2026-04-14
+> Last updated: 2026-04-15
 
 ---
 
@@ -163,6 +163,159 @@
 
 ---
 
+## E-Series: SWA Optimization & Pipeline Transfer (PLANNED)
+
+> Baseline: **C6** (CE + SWA + no asymmetry, test F1=0.6762, gap=4.21pp)
+> Principle: Lesson #37 — C6 is Goldilocks; now optimize SWA trajectory and fine-tune hyperparams
+> Key insight: OneCycleLR is suboptimal for SWA (LR still climbing during averaging phase)
+
+### Tier 1: LR Schedule Optimization (baseline: C6)
+
+#### E1: Cosine Warmup LR (~17h)
+- [x] Create config: `convnextv2_large_8bit_ablation_e1.yaml`
+- [x] Create report stub: `experiments/convnextv2_large_8bit_ablation_e1/report.md`
+- [ ] Run experiment: `python train.py --config configs/experiment_v2_birads/convnextv2_large_8bit_ablation_e1.yaml`
+- [ ] Analyze results — smooth LR decay during SWA vs OneCycleLR's climbing LR
+
+#### E2: Cosine Warm Restarts LR (~17h)
+- [x] Create config: `convnextv2_large_8bit_ablation_e2.yaml`
+- [x] Create report stub: `experiments/convnextv2_large_8bit_ablation_e2/report.md`
+- [ ] Run experiment: `python train.py --config configs/experiment_v2_birads/convnextv2_large_8bit_ablation_e2.yaml`
+- [ ] Analyze results — SWA literature's optimal schedule (diverse weight snapshots)
+
+### Tier 2: SWA Parameter Tuning (baseline: C6)
+
+#### E3: Later SWA + Longer Training (~17h+)
+- [x] Create config: `convnextv2_large_8bit_ablation_e3.yaml`
+- [x] Create report stub: `experiments/convnextv2_large_8bit_ablation_e3/report.md`
+- [ ] Run experiment: `python train.py --config configs/experiment_v2_birads/convnextv2_large_8bit_ablation_e3.yaml`
+- [ ] Analyze results — swa_start=10 + patience=30 → more converged SWA averaging
+
+### Tier 3: Regularization Fine-Tuning (baseline: C6)
+
+#### E4: Higher Label Smoothing (~17h)
+- [x] Create config: `convnextv2_large_8bit_ablation_e4.yaml`
+- [x] Create report stub: `experiments/convnextv2_large_8bit_ablation_e4/report.md`
+- [ ] Run experiment: `python train.py --config configs/experiment_v2_birads/convnextv2_large_8bit_ablation_e4.yaml`
+- [ ] Analyze results — label_smoothing 0.05→0.10 closes remaining 4.21pp gap?
+
+#### E5: Boosted Binary Head Weight (~17h)
+- [x] Create config: `convnextv2_large_8bit_ablation_e5.yaml`
+- [x] Create report stub: `experiments/convnextv2_large_8bit_ablation_e5/report.md`
+- [ ] Run experiment: `python train.py --config configs/experiment_v2_birads/convnextv2_large_8bit_ablation_e5.yaml`
+- [ ] Analyze results — binary=0.20, subgroup=0.35 (Lesson #31 motivated)
+
+### Tier 4: Spatial Augmentation (baseline: C6)
+
+#### E6: Stronger Spatial Augmentation (~17h)
+- [x] Create config: `convnextv2_large_8bit_ablation_e6.yaml`
+- [x] Create report stub: `experiments/convnextv2_large_8bit_ablation_e6/report.md`
+- [ ] Run experiment: `python train.py --config configs/experiment_v2_birads/convnextv2_large_8bit_ablation_e6.yaml`
+- [ ] Analyze results — rotation=20, erasing=0.2 (spatial diversity without label corruption)
+
+### Tier 5: Cross-Pipeline Transfer (baseline: 16-bit v1)
+
+#### E7: 16-bit + SWA + No Asymmetry (~10h)
+- [x] Create config: `convnextv2_large_16bit_ablation_e7.yaml`
+- [x] Create report stub: `experiments/convnextv2_large_16bit_ablation_e7/report.md`
+- [ ] Run experiment: `python train.py --config configs/experiment_v2_birads/convnextv2_large_16bit_ablation_e7.yaml`
+- [ ] Analyze results — C6 insights (no asym + SWA) on 16-bit. Target: >= 0.74
+
+### E-Series Post-Analysis
+- [ ] Update EXPERIMENTS.md with all E-series results
+- [ ] Update tasks/lessons.md with E-series findings
+- [ ] Decision: If E1 or E2 > C6 → best LR schedule for F-series
+- [ ] Decision: If E5 > C6 → binary head weight matters, tune further
+- [ ] Decision: If E7 > 0.74 → 16-bit pipeline is the production path
+- [ ] Decision: Best E-series winner → F-series baseline (or combine best changes)
+
+### Recommended Run Order
+1. **E7** (16-bit, ~10h) — fastest, independent pipeline, highest potential impact
+2. **E1** (cosine_warmup, ~17h) — highest priority LR schedule test
+3. **E2** (warm_restarts, ~17h) — SWA-optimal schedule test
+4. **E5** (binary weight, ~17h) — lesson-motivated tuning
+5. **E3** (later SWA, ~17h+) — SWA timing test (may run longer due to patience=30)
+6. **E4** (label smoothing, ~17h) — regularization tuning
+7. **E6** (augmentation, ~17h) — spatial diversity test
+
+**Parallel strategy:** Run E7 first (~10h). Then E1+E2 as a pair (~17h). Then E5+E3.
+
+### Bonus: TTA on Existing C6 Model (FREE — no training)
+- [ ] Fix normalization bug in `ensemble_evaluate.py` (uses ImageNet stats instead of dataset stats)
+- [ ] Run: `python ensemble_evaluate.py --tta --config configs/experiment_v2_birads/convnextv2_large_8bit_ablation_c6.yaml`
+- [ ] Report TTA F1 improvement over C6 baseline
+
+---
+
+## F-Series: 16-bit Pipeline Transfer (PLANNED)
+
+> Baseline: **C6** (8-bit champion, test F1=0.6762, gap=4.21pp)
+> Dataset: **Dataset_1024_16bit** (7,557 hasta) / **Dataset_Test_1024_16bit** (1,655 hasta)
+> Normalizasyon: DATASET_STATS_16BIT — mean=0.1220, std=0.2044 (all-pixel, transforms.py)
+> Principle: 8-bit'in en iyi 4 config'ini 16-bit'e taşıyarak bit derinliğinin etkisini izole et.
+>
+> **Deney Tasarımı:**
+> F1 = C6 champion transfer (baseline). F1 vs F2 = asymmetry etkisi. F1 vs F3 = SWA etkisi. F1 vs F4 = SWA+Mixup antagonizmi.
+> Cross-pipeline karşılaştırma: her F deneyi ↔ 8-bit karşılığı → 16-bit kazancını ölç.
+
+### F1: C6 Champion Transfer (CE + SWA + No Asymmetry) (~17h)
+- [x] Create config: `convnextv2_large_16bit_ablation_f1.yaml`
+- [ ] Run experiment: `python train.py --config configs/experiment_v2_birads/convnextv2_large_16bit_ablation_f1.yaml`
+- [ ] Analyze results — F1 vs C6 (0.6762): 16-bit kazancı ne kadar? Target: >= 0.69
+
+### F2: Asymmetry Retest (CE + SWA + Asymmetry=0.10) (~17h)
+- [x] Create config: `convnextv2_large_16bit_ablation_f2.yaml`
+- [ ] Run experiment: `python train.py --config configs/experiment_v2_birads/convnextv2_large_16bit_ablation_f2.yaml`
+- [ ] Analyze results — F1 vs F2: asymmetry loss 16-bit'te de zararlı mı?
+
+### F3: SWA Isolation (CE + No SWA + No Asymmetry) (~17h)
+- [x] Create config: `convnextv2_large_16bit_ablation_f3.yaml`
+- [ ] Run experiment: `python train.py --config configs/experiment_v2_birads/convnextv2_large_16bit_ablation_f3.yaml`
+- [ ] Analyze results — F1 vs F3: SWA 16-bit'te ne kadar katkı sağlıyor?
+
+### F4: SWA+Mixup Antagonism Retest (CE + SWA + Mixup/CutMix) (~17h)
+- [x] Create config: `convnextv2_large_16bit_ablation_f4.yaml`
+- [ ] Run experiment: `python train.py --config configs/experiment_v2_birads/convnextv2_large_16bit_ablation_f4.yaml`
+- [ ] Analyze results — F1 vs F4: SWA+Mixup antagonizmi 16-bit'te devam ediyor mu?
+
+### F-Series Post-Analysis
+- [ ] Update EXPERIMENTS.md with all F-series results
+- [ ] Update tasks/lessons.md with F-series findings
+- [ ] Decision: F1 > C6 (0.6762)? → 16-bit pipeline 8-bit'ten üstün
+- [ ] Decision: F1 > F2? → asymmetry bit-depth bağımsız zararlı (Lesson #22 evrensel)
+- [ ] Decision: F1 > F3? → SWA 16-bit'te de essential
+- [ ] Decision: F1 > F4? → SWA+Mixup antagonizmi evrensel (Lesson #35 evrensel)
+- [ ] Decision: Best F-series winner → production pipeline seçimi (8-bit vs 16-bit)
+
+### Recommended Run Order
+1. **F1** (~17h) — Champion transfer, ana sonuç: 16-bit baseline
+2. **F3** (~17h) — SWA isolation, F1 ile birlikte 2×2 faktöriyel tamamlanır
+3. **F2** (~17h) — Asymmetry retest
+4. **F4** (~17h) — SWA+Mixup retest (en düşük öncelik, negatif sonuç bekleniyor)
+
+**Parallel strategy:** F1+F3 birlikte başlat (bağımsız, 2×2 faktöriyelin iki ayağı). Sonra F2+F4.
+
+### F-Series Experiment Design Overview
+
+| Exp | 8-bit Source | 8-bit Test F1 | Variable | 16-bit Question |
+|-----|-------------|:-------------:|----------|-----------------|
+| F1  | C6          | 0.6762        | Baseline transfer | 16-bit dynamic range ne kadar kazandırır? |
+| F2  | B5          | 0.6615        | +asymmetry=0.10 | Asymmetry loss 16-bit'te de zararlı mı? |
+| F3  | D4          | 0.6615        | -SWA | SWA 16-bit'te de essential mi? |
+| F4  | D7          | 0.6563        | +Mixup/CutMix | SWA+Mixup antagonizmi 16-bit'te devam mı? |
+
+### Expected 2×2 Factorial (F1/F3 + 8-bit C6/D4)
+
+```
+|             | 8-bit          | 16-bit        | Δ (16bit-8bit) |
+|-------------|:--------------:|:-------------:|:--------------:|
+| No SWA      | D4 = 0.6615    | F3 = ???      | ???            |
+| SWA         | C6 = 0.6762    | F1 = ???      | ???            |
+| Δ SWA       | +1.47pp        | ???           |                |
+```
+
+---
+
 ## Reference: Key Metrics
 
 | Experiment | Best Val F1 | Test F1 | Gap | BR1 | BR2 | BR4 | BR5 |
@@ -173,6 +326,18 @@
 | B1 (baseline) | 0.7334 | 0.6387 | 9.47pp | 0.526 | 0.675 | 0.498 | 0.856 |
 
 **Progress:** C6 (test F1=0.6762, gap=4.21pp) confirmed as optimal 8-bit configuration after D-series. All 7 D-series experiments scored below C6. Key finding: D4=B5=0.6615 exactly — clean loss alone matches dirty loss + SWA.
+
+## E-Series Experiment Design Overview
+
+| Experiment | Strategy | Variable vs C6 | Hypothesis |
+|---|---|---|---|
+| E1 | LR schedule | cosine_warmup (warmup=5, min_lr=1e-6) | Smooth LR decay during SWA -> better averaging |
+| E2 | LR schedule | cosine_warm_restarts (T_0=10, T_mult=2) | Diverse SWA snapshots from LR restarts |
+| E3 | SWA timing | swa_start=10, patience=30 | More converged weights before averaging |
+| E4 | Regularization | label_smoothing=0.10 | Stronger label regularization closes gap |
+| E5 | Loss weights | binary=0.20, subgroup=0.35 | Boost 7x-efficient binary gradient anchor |
+| E6 | Augmentation | rotation=20, erasing=0.2 | Spatial diversity without label corruption |
+| E7 | Pipeline transfer | 16-bit + SWA + no asymmetry | C6 insights on 16-bit (baseline 0.7233) |
 
 ## D-Series Results Overview
 

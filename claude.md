@@ -59,25 +59,33 @@ This document is prepared to introduce Claude to the project's data structure, s
 
 ## 1. General Structure and Image Properties
 
-| Property | Value |
+| Property | 8-bit Pipeline | 16-bit Pipeline |
+| --- | --- | --- |
+| **Image Format** | 8-bit PNG, Grayscale (mode=L, uint8) | 16-bit PNG, Grayscale (mode=I;16, uint16) |
+| **Resolution** | 1024×1024 pixels | 1024×1024 pixels |
+| **Value Range** | [0, 255] → normalized [0, 1] | [0, 65535] → normalized [0, 1] |
+| **Train Dataset** | Dataset_1024_8bit (8,557 hasta) | Dataset_1024_16bit (7,557 hasta) |
+| **Test Dataset** | Dataset_Test_1024_8bit (1,655 hasta) | Dataset_Test_1024_16bit (1,655 hasta) |
+
+| Property | Value (ortak) |
 | --- | --- |
-| **Image Format** | 8-bit PNG, Grayscale (mode=L, uint8) |
-| **Resolution** | 1024×1024 pixels |
-| **Source** | DICOM → segmentation → windowing → tight crop → CLAHE → letterbox → 8-bit PNG |
 | **Number of Views** | 4 (RCC, LCC, RMLO, LMLO) |
 | **Unit** | **Patient-based** (1 patient = 1 folder = 4 images) |
 | **Number of Classes** | 4 (BI-RADS 1, 2, 4, 5) — **BI-RADS 3 does not exist.** |
-| **Value Range** | [0, 255] (normalized: [0, 1]) |
 | **Padding Fill** | **Not applied** — zero pixels are left as raw |
 
 ### Active Dataset Preprocessing Pipelines
 
 | Dataset | Role | Preprocessing |
 | --- | --- | --- |
-| **Dataset_1024_8bit** | Train/Val | DICOM → MONOCHROME1 correction → Segmentation (U-Net, resnext50_32x4d, 640×640) → Largest contour mask → approxPolyDP(epsilon=2.0) → fillPoly → Zero out outside mask → Bounding box crop → Windowing (DICOM WindowCenter/Width) → Tight crop (zero border strip) → CLAHE (clipLimit=2.0, tileGrid=8×8, tissue only) → Letterbox 1024×1024 → 8-bit PNG |
-| **Dataset_Test_1024_8bit** | Test (holdout) | Same pipeline: DICOM → Segmentation → Windowing → Tight crop → CLAHE → Letterbox 1024×1024 → 8-bit PNG |
+| **Dataset_1024_8bit** | Train/Val (8-bit) | DICOM → MONOCHROME1 correction → Segmentation (U-Net, resnext50_32x4d, 640×640) → Largest contour mask → approxPolyDP(epsilon=2.0) → fillPoly → Zero out outside mask → Bounding box crop → Windowing (DICOM WindowCenter/Width) → Tight crop (zero border strip) → CLAHE (clipLimit=2.0, tileGrid=8×8, tissue only) → Letterbox 1024×1024 → 8-bit PNG |
+| **Dataset_Test_1024_8bit** | Test (8-bit) | Same pipeline → 8-bit PNG |
+| **Dataset_1024_16bit** | Train/Val (16-bit) | Same DICOM → Segmentation → Windowing → Tight crop → CLAHE → Letterbox 1024×1024 pipeline → **16-bit PNG** (preserves full dynamic range) |
+| **Dataset_Test_1024_16bit** | Test (16-bit) | Same pipeline → 16-bit PNG |
 
 > **Preprocessing detail:** U-Net performs 3-class prediction in segmentation (0=background, 1=breast tissue, 2=pectoral muscle). Only class 1 (breast) is masked. CLAHE is applied only to tissue pixels (>0); background remains zero. Tight crop removes remaining zero borders from the segmentation crop.
+>
+> **8-bit vs 16-bit:** Aynı preprocessing pipeline kullanılır. Tek fark son adımda bit derinliği: 8-bit [0,255] aralığına quantize ederken, 16-bit [0,65535] aralığında tam dynamic range korur. Config'de `bit_depth: 8` veya `bit_depth: 16` ile seçilir.
 
 ---
 
@@ -85,12 +93,12 @@ This document is prepared to introduce Claude to the project's data structure, s
 
 ### Active Datasets
 
-| Split | Dataset | Patients | Images |
-| --- | --- | --- | --- |
-| **Train** | Dataset_1024_8bit | 8,557 | 34,228 |
-| **Test** | Dataset_Test_1024_8bit | 1,655 | 6,620 |
+| Split | 8-bit Dataset | Patients | 16-bit Dataset | Patients |
+| --- | --- | --- | --- | --- |
+| **Train/Val** | Dataset_1024_8bit | 8,557 | Dataset_1024_16bit | 7,557 |
+| **Test** | Dataset_Test_1024_8bit | 1,655 | Dataset_Test_1024_16bit | 1,655 |
 
-### Train Set: 8,557 Patients — Pixel Distribution by Class
+### Train Set: 8-bit (8,557 Patients) — Pixel Distribution by Class
 
 | Class | Tissue Pixels (nonzero) | Ratio |
 | --- | --- | --- |
@@ -100,7 +108,17 @@ This document is prepared to introduce Claude to the project's data structure, s
 | BI-RADS-5 | 3,301,005,784 | 26.7% |
 | **Total** | **12,366,705,542** | — |
 
-### Test Set: 1,655 Patients — Pixel Distribution by Class
+### Train Set: 16-bit (7,557 Patients) — Pixel Distribution by Class
+
+| Class | Tissue Pixels (nonzero) | Ratio |
+| --- | --- | --- |
+| BI-RADS-1 | 1,961,202,101 | 18.0% |
+| BI-RADS-2 | 3,646,375,712 | 33.4% |
+| BI-RADS-4 | 2,380,776,297 | 21.8% |
+| BI-RADS-5 | 2,932,067,267 | 26.8% |
+| **Total** | **10,920,421,377** | — |
+
+### Test Set: 1,655 Patients — Pixel Distribution by Class (8-bit)
 
 | Class | Tissue Pixels (nonzero) | Ratio |
 | --- | --- | --- |
@@ -110,6 +128,16 @@ This document is prepared to introduce Claude to the project's data structure, s
 | BI-RADS-5 | 900,864,020 | 37.0% |
 | **Total** | **2,435,316,588** | — |
 
+### Test Set: 1,655 Patients — Pixel Distribution by Class (16-bit)
+
+| Class | Tissue Pixels (nonzero) | Ratio |
+| --- | --- | --- |
+| BI-RADS-1 | 236,614,379 | 9.7% |
+| BI-RADS-2 | 877,357,800 | 36.0% |
+| BI-RADS-4 | 421,176,411 | 17.3% |
+| BI-RADS-5 | 901,204,411 | 37.0% |
+| **Total** | **2,436,353,001** | — |
+
 > BI-RADS-3 class does not exist. The test set is **imbalanced** — BI-RADS-2 and BI-RADS-5 are dominant.
 
 ### Split Details
@@ -117,12 +145,13 @@ This document is prepared to introduce Claude to the project's data structure, s
 * **Train (85%):** Stratified random split (seed=42).
 * **Val (15%):** Stratified random split (seed=42).
 * **Test (Fixed):** 1,655 patients, 6,620 images. Independent holdout (class distribution is imbalanced).
+* **Not:** 16-bit train set (7,557 hasta) 8-bit'ten (8,557 hasta) 1,000 hasta daha az — preprocessing sırasında bazı hastalar filtrelenmiş olabilir.
 
 ---
 
 ## 3. Normalization Statistics (0–1 scale)
 
-### Dataset_1024_8bit (Train/Val)
+### 3a. Dataset_1024_8bit (Train/Val — 8,557 hasta)
 
 #### Train Statistics
 
@@ -134,7 +163,7 @@ This document is prepared to introduce Claude to the project's data structure, s
 | Total pixels | 35,890,659,328 |
 | Tissue pixels | 12,366,705,542 |
 
-#### Class-wise Nonzero (Tissue) Mean / Std — Train
+#### Class-wise Nonzero (Tissue) Mean / Std — Train (8-bit)
 
 | Class | Mean | Std | Tissue Pixels |
 | --- | --- | --- | --- |
@@ -143,7 +172,7 @@ This document is prepared to introduce Claude to the project's data structure, s
 | BI-RADS-4 | 0.3512 | 0.1818 | 2,738,316,060 |
 | BI-RADS-5 | 0.3483 | 0.1780 | 3,301,005,784 |
 
-#### Patient-wise Tissue Mean Distribution — Train (n=8,557)
+#### Patient-wise Tissue Mean Distribution — Train 8-bit (n=8,557)
 
 | Percentile | Value |
 | --- | --- |
@@ -155,7 +184,7 @@ This document is prepared to introduce Claude to the project's data structure, s
 | p95 | 0.4267 |
 | max | 0.6040 |
 
-#### Train vs Test Validation
+#### Train vs Test Validation (8-bit)
 
 | Metric | Train | Test |
 | --- | --- | --- |
@@ -165,15 +194,84 @@ This document is prepared to introduce Claude to the project's data structure, s
 
 > Train–Test distributions are very close — no domain shift.
 
-#### Backbone Normalization Values
+#### Backbone Normalization Values (8-bit)
 
 ```python
-# Option 1: All-pixel statistics (including zeros)
+# All-pixel statistics (including zeros) — transforms.py DATASET_STATS_8BIT
 mean=[0.1210, 0.1210, 0.1210], std=[0.1977, 0.1977, 0.1977]
 
-# Option 2: Nonzero (tissue) statistics — must be used together with key_padding_mask
+# Nonzero (tissue) statistics — must be used together with key_padding_mask
 mean=[0.3512, 0.3512, 0.3512], std=[0.1804, 0.1804, 0.1804]
 ```
+
+---
+
+### 3b. Dataset_1024_16bit (Train/Val — 7,557 hasta)
+
+#### Train Statistics
+
+| Metric | Value |
+| --- | --- |
+| All-pixel mean / std | 0.1220 / 0.2044 |
+| Nonzero (tissue) mean / std | 0.3540 / 0.1978 |
+| Zero pixel ratio | 65.55% |
+| Total pixels | 31,696,355,328 |
+| Tissue pixels | 10,920,421,377 |
+
+#### Class-wise Nonzero (Tissue) Mean / Std — Train (16-bit)
+
+| Class | Mean | Std | Tissue Pixels |
+| --- | --- | --- | --- |
+| BI-RADS-1 | 0.3577 | 0.2027 | 1,961,202,101 |
+| BI-RADS-2 | 0.3559 | 0.1983 | 3,646,375,712 |
+| BI-RADS-4 | 0.3542 | 0.1980 | 2,380,776,297 |
+| BI-RADS-5 | 0.3491 | 0.1933 | 2,932,067,267 |
+
+#### Patient-wise Tissue Mean Distribution — Train 16-bit (n=7,557)
+
+| Percentile | Value |
+| --- | --- |
+| min | 0.0457 |
+| p5 | 0.2561 |
+| p25 | 0.3016 |
+| p50 | 0.3402 |
+| p75 | 0.3913 |
+| p95 | 0.5078 |
+| max | 0.7963 |
+
+#### Train vs Test Validation (16-bit)
+
+| Metric | Train | Test |
+| --- | --- | --- |
+| All-pixel mean/std | 0.1220 / 0.2044 | 0.1247 / 0.2051 |
+| Nonzero mean/std | 0.3540 / 0.1978 | 0.3554 / 0.1945 |
+| Zero pixel % | 65.55% | 64.90% |
+
+> Train–Test distributions are very close — no domain shift (both pipelines consistent).
+
+#### Backbone Normalization Values (16-bit)
+
+```python
+# All-pixel statistics (including zeros) — transforms.py DATASET_STATS_16BIT
+mean=[0.1220, 0.1220, 0.1220], std=[0.2044, 0.2044, 0.2044]
+
+# Nonzero (tissue) statistics — must be used together with key_padding_mask
+mean=[0.3540, 0.3540, 0.3540], std=[0.1978, 0.1978, 0.1978]
+```
+
+---
+
+### 3c. 8-bit vs 16-bit Karşılaştırma
+
+| Metric | 8-bit (Train) | 16-bit (Train) | Fark |
+| --- | --- | --- | --- |
+| All-pixel mean | 0.1210 | 0.1220 | +0.0010 |
+| All-pixel std | 0.1977 | 0.2044 | +0.0067 |
+| Tissue mean | 0.3512 | 0.3540 | +0.0028 |
+| Tissue std | 0.1804 | 0.1978 | +0.0174 |
+| Zero pixel % | 65.54% | 65.55% | ~aynı |
+
+> 16-bit pipeline daha yüksek std gösteriyor — quantization kaybı olmadan daha geniş dynamic range korunuyor. Mean değerleri çok yakın.
 
 > **Critical:** If nonzero statistics are used, `key_padding_mask` must be passed to CrossAttn; otherwise letterbox zero pixels will corrupt attention.
 
@@ -186,7 +284,7 @@ mean=[0.3512, 0.3512, 0.3512], std=[0.1804, 0.1804, 0.1804]
 * **Balancing:** `Sqrt-inverse frequency class weights` are used (normalized: max-freq class = 1.0).
 * **Current Weights:** `[1.28, 1.00, 1.20, 1.11]` (BI-RADS [1, 2, 4, 5])
 * **Patient Distribution (Train):** BR1=1678, BR2=2754, BR4=1898, BR5=2227 | Benign=4432, Malignant=4125
-* **Preprocessing:** Padding fill is not applied. Raw 8-bit images are used.
+* **Preprocessing:** Padding fill is not applied. Config'de `bit_depth: 8` veya `bit_depth: 16` ile pipeline seçilir.
 
 > **Critical Note:** Tissue density (brightness) is higher in malignant classes. There is a risk that the model may learn brightness as a "shortcut" rather than learning morphological features.
 
@@ -218,23 +316,50 @@ python train.py --config configs/convnext_large_seg_v1.yaml
 python benchmark.py --configs configs/configname.yaml configs/configname2.yaml
 ```
 
-## 6. 8-bit Image Reading Pipeline
+## 6. Image Reading Pipeline (8-bit & 16-bit)
 
-**Normalization**: Statistics computed from the train set are used for both datasets (train–test distributions are very close).
+**Bit derinliği config'de `data.bit_depth` ile seçilir.** Her iki modda da sonuç aynı: `(3, H, W)` float32 tensor, [0, 1] aralığında.
 
 ```python
-# Dataset_1024_8bit (Train/Val) — All-pixel
+# 8-bit: PIL mode "L" → /255 → float32
+# 16-bit: PIL mode "I;16" → /65535 → float32
+```
+
+**Normalization**: Train set istatistikleri her iki split'te (train+val ve test) kullanılır.
+
+```python
+# 8-bit pipeline (Dataset_1024_8bit) — transforms.py DATASET_STATS_8BIT
 mean=[0.1210, 0.1210, 0.1210], std=[0.1977, 0.1977, 0.1977]
 
-# Dataset_Test_1024_8bit (Test) — Same statistics applied
-# Train: 0.1210/0.1977 | Test: 0.1237/0.1986 — difference is negligible
-mean=[0.1210, 0.1210, 0.1210], std=[0.1977, 0.1977, 0.1977]
+# 16-bit pipeline (Dataset_1024_16bit) — transforms.py DATASET_STATS_16BIT
+mean=[0.1220, 0.1220, 0.1220], std=[0.2044, 0.2044, 0.2044]
 ```
+
+**Config örneği (8-bit):**
+```yaml
+data:
+  root_dir: "Dataset_1024_8bit"
+  test_dir: "Dataset_Test_1024_8bit"
+  bit_depth: 8
+  dataset_variant: "noseg"
+```
+
+**Config örneği (16-bit):**
+```yaml
+data:
+  root_dir: "Dataset_1024_16bit"
+  test_dir: "Dataset_Test_1024_16bit"
+  bit_depth: 16
+  dataset_variant: "noseg"
+```
+
+> **Not:** `_get_norm_stats()` istatistikleri `bit_depth` ve `image_size`'a göre otomatik seçer. Eski 512×512 16-bit dataset (Dataset_512) için ayrı istatistikler korunmaktadır (geriye uyumluluk).
 
 ## 7. Operational Rules for Claude
 
 * **Anomaly:** Metric interpretations should be made carefully due to the imbalanced nature of the test set.
-* **Normalization:** Statistics were computed with `compute_norm_stats.py` and are current as of 2026-04-08.
+* **Normalization:** Statistics were computed with `compute_norm_stats.py`. 8-bit: 2026-04-08, 16-bit: 2026-04-15.
+* **Bit Depth:** Config'de `bit_depth` belirtilmezse varsayılan 8-bit'tir. 16-bit kullanmak için `bit_depth: 16` açıkça yazılmalıdır.
 
 ---
 

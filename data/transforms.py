@@ -20,9 +20,9 @@ import torchvision.transforms.v2 as T
 import torchvision.transforms.v2.functional as TF
 
 
-# 16-bit dataset normalizasyon istatistikleri (all-pixel, 0-1 scale)
-# Eski Dataset_512 / Dataset_512_Test dataseti için
-DATASET_STATS = {
+# ─── Eski 512×512 16-bit dataset istatistikleri (geriye uyumluluk) ────────────
+# Dataset_512 / Dataset_512_Test için. "seg" = segmentasyon maskeli, "noseg" = maskesiz.
+DATASET_STATS_512 = {
     "seg": {
         "mean": [0.0921, 0.0921, 0.0921],
         "std":  [0.1520, 0.1520, 0.1520],
@@ -33,14 +33,25 @@ DATASET_STATS = {
     },
 }
 
-# 8-bit dataset normalizasyon istatistikleri (all-pixel, 0-1 scale)
-# Dataset_1024_8bit dataseti için (claude.md Section 3, compute_norm_stats.py)
-# CLAHE + letterbox 1024x1024 + 8-bit PNG pipeline.
-# NOT: Eski BIRADS-Full-Train-8Bit-Processed değerleri (0.0990/0.1644) YANLIŞ idi.
+# ─── 1024×1024 8-bit dataset istatistikleri (all-pixel, 0-1 scale) ───────────
+# Dataset_1024_8bit (8,557 hasta). CLAHE + letterbox 1024×1024 + 8-bit PNG.
+# Train all-pixel: mean=0.1210, std=0.1977 | tissue: mean=0.3512, std=0.1804
 DATASET_STATS_8BIT = {
     "noseg": {
         "mean": [0.1210, 0.1210, 0.1210],
         "std":  [0.1977, 0.1977, 0.1977],
+    },
+}
+
+# ─── 1024×1024 16-bit dataset istatistikleri (all-pixel, 0-1 scale) ──────────
+# Dataset_1024_16bit (7,557 hasta). Aynı pipeline, 16-bit PNG çıktı.
+# Train all-pixel: mean=0.1220, std=0.2044 | tissue: mean=0.3540, std=0.1978
+# Test  all-pixel: mean=0.1247, std=0.2051 | tissue: mean=0.3554, std=0.1945
+# Train-Test farkı ihmal edilebilir — train istatistikleri her ikisinde kullanılır.
+DATASET_STATS_16BIT = {
+    "noseg": {
+        "mean": [0.1220, 0.1220, 0.1220],
+        "std":  [0.2044, 0.2044, 0.2044],
     },
 }
 
@@ -53,20 +64,26 @@ def _get_norm_stats(data_cfg: dict) -> tuple:
     """
     Config'den uygun normalizasyon istatistiklerini döndürür.
 
-    16-bit modda Dataset_512 istatistikleri (DATASET_STATS) kullanılır.
-    8-bit modda BIRADS-Full-Train-8Bit-Processed istatistikleri (DATASET_STATS_8BIT) kullanılır.
+    Seçim mantığı:
+        bit_depth=8  → DATASET_STATS_8BIT (1024×1024 8-bit pipeline)
+        bit_depth=16, image_size≥1024 → DATASET_STATS_16BIT (1024×1024 16-bit pipeline)
+        bit_depth=16, image_size<1024  → DATASET_STATS_512  (eski 512×512 16-bit pipeline)
+        Hiçbiri eşleşmezse → ImageNet istatistikleri (fallback)
     """
     bit_depth = data_cfg.get("bit_depth", 8)
-    variant = data_cfg.get("dataset_variant", "seg")
+    variant = data_cfg.get("dataset_variant", "noseg")
+    image_size = data_cfg.get("image_size", 1024)
 
-    if bit_depth == 16 and variant in DATASET_STATS:
-        stats = DATASET_STATS[variant]
-        return stats["mean"], stats["std"]
-    elif bit_depth == 8 and variant in DATASET_STATS_8BIT:
+    if bit_depth == 8 and variant in DATASET_STATS_8BIT:
         stats = DATASET_STATS_8BIT[variant]
-        return stats["mean"], stats["std"]
+    elif bit_depth == 16 and image_size >= 1024 and variant in DATASET_STATS_16BIT:
+        stats = DATASET_STATS_16BIT[variant]
+    elif bit_depth == 16 and variant in DATASET_STATS_512:
+        stats = DATASET_STATS_512[variant]
     else:
         return IMAGENET_MEAN, IMAGENET_STD
+
+    return stats["mean"], stats["std"]
 
 
 def get_train_transforms(data_cfg: dict) -> torch.nn.Module:

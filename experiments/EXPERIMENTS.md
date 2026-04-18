@@ -2,7 +2,7 @@
 
 > Otomatik oluşturulmuştur. `python scripts/report.py index` ile güncellenir.
 
-Son güncelleme: 2026-04-14
+Son güncelleme: 2026-04-15
 
 | Durum | Deney | Tarih | Val F1 | Test F1 | Backbone | Baseline |
 |:---:|---|---|:---:|:---:|---|---|
@@ -33,6 +33,13 @@ Son güncelleme: 2026-04-14
 | ✅ | [dinov2_vitl_8bit_ablation_d5](dinov2_vitl_8bit_ablation_d5/report.md) | 2026-04-14 | 0.6925 | 0.6383 | `vit_large_patch14_dinov2` | `dinov2_vitl_8bit_ablation_c2` |
 | ✅ | [convnextv2_large_8bit_ablation_d6](convnextv2_large_8bit_ablation_d6/report.md) | 2026-04-14 | 0.7249 | 0.6353 | `convnextv2_large` | `convnextv2_large_8bit_ablation_c6` |
 | ✅ | [convnextv2_large_8bit_ablation_d7](convnextv2_large_8bit_ablation_d7/report.md) | 2026-04-14 | 0.7159 | 0.6563 | `convnextv2_large` | `convnextv2_large_8bit_ablation_c6` |
+| ✅ | [convnextv2_large_8bit_ablation_e1](convnextv2_large_8bit_ablation_e1/report.md) | 2026-04-16 | 0.7207 | 0.6446 | `convnextv2_large` | `convnextv2_large_8bit_ablation_c6` |
+| ✅ | [convnextv2_large_8bit_ablation_e2](convnextv2_large_8bit_ablation_e2/report.md) | 2026-04-16 | 0.7305 | 0.6363 | `convnextv2_large` | `convnextv2_large_8bit_ablation_c6` |
+| ✅ | [convnextv2_large_8bit_ablation_e3](convnextv2_large_8bit_ablation_e3/report.md) | 2026-04-16 | 0.7104 | 0.6449 | `convnextv2_large` | `convnextv2_large_8bit_ablation_c6` |
+| ✅ | [convnextv2_large_8bit_ablation_e4](convnextv2_large_8bit_ablation_e4/report.md) | 2026-04-16 | 0.7274 | 0.6430 | `convnextv2_large` | `convnextv2_large_8bit_ablation_c6` |
+| ✅ | [convnextv2_large_8bit_ablation_e5](convnextv2_large_8bit_ablation_e5/report.md) | 2026-04-17 | 0.7190 | 0.6425 | `convnextv2_large` | `convnextv2_large_8bit_ablation_c6` |
+| ❌ | [convnextv2_large_8bit_ablation_e6](convnextv2_large_8bit_ablation_e6/report.md) | 2026-04-15 | — | DNF | `convnextv2_large` | `convnextv2_large_8bit_ablation_c6` |
+| ❌ | [convnextv2_large_16bit_ablation_e7](convnextv2_large_16bit_ablation_e7/report.md) | 2026-04-15 | — | DNF | `convnextv2_large` | `convnextv2_large_seg_deformable_asymmetry_malignonly_v1` |
 | 🔄 | [swinv2_base_8bit_ablation_a2](swinv2_base_8bit_ablation_a2/report.md) | 2026-04-09 | 0.6013* | — | `swinv2_base_window12to24_192to384` | `convnextv2_large_8bit_ablation_a1` |
 | 📋 | [swinv2_base_cosine_v1](swinv2_base_cosine_v1/report.md) | 2026-04-05 | — | — | `swinv2_base_window12to24_192to384` | `swinv2_base_v4` |
 | 📋 | [swinv2_base_focal_asymmetry_v1](swinv2_base_focal_asymmetry_v1/report.md) | 2026-04-05 | — | — | `swinv2_base_window12to24_192to384` | `swinv2_base_focal_v1` |

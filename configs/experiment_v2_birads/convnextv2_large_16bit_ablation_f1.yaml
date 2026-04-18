@@ -1,0 +1,166 @@
+# =============================================================================
+# F1 — ConvNeXtV2-Large CE + SWA | 16-bit 1024² | Champion Config Transfer
+# =============================================================================
+# C6 (8-bit champion, test F1=0.6762, gap=4.21pp) aynen 16-bit'e taşınır.
+# 16-bit pipeline 8-bit'ten farklı olarak [0,65535] dynamic range korur —
+# quantization kaybı yoktur.
+#
+# Motivasyon: C6 8-bit'in optimal konfigürasyonu olarak A/B/C/D serilerinde
+#   kanıtlandı. 16-bit'in daha geniş dynamic range'i (özellikle düşük kontrastlı
+#   doku bölgelerinde) ek bilgi sağlayarak test F1'i artırabilir.
+#
+# 16-bit adapasyon (C6'dan farklar):
+#   ~ data.root_dir:  Dataset_1024_8bit → Dataset_1024_16bit
+#   ~ data.test_dir:  Dataset_Test_1024_8bit → Dataset_Test_1024_16bit
+#   ~ data.bit_depth: 8 → 16
+#   ~ normalizasyon:  DATASET_STATS_8BIT (0.1210/0.1977) → DATASET_STATS_16BIT (0.1220/0.2044)
+#   Diğer tüm parametreler C6 ile AYNI.
+#
+# Not: class_weights [1.28, 1.00, 1.20, 1.11] korunuyor — 16-bit sınıf
+#   dağılımı 8-bit ile neredeyse aynı (tissue pixel oranları: ±0.7pp fark).
+#
+# Hipotez: Test F1 >= 0.69. 16-bit dynamic range özellikle düşük kontrastlı
+#   BR1/BR2 ayrımında ek bilgi sağlamalı.
+# Kill kriteri: val_full_f1_macro < 0.60 by epoch 15.
+# =============================================================================
+
+project:
+  name: "mammography-birads-classification"
+  description: "F1 — ConvNeXtV2-Large CE + SWA | 16-bit 1024 | C6 champion transfer"
+  seed: 42
+
+data:
+  root_dir: "Dataset_1024_16bit"
+  test_dir: "Dataset_Test_1024_16bit"
+  image_size: 1024
+  num_workers: 4
+  pin_memory: true
+  bit_depth: 16
+  dataset_variant: "noseg"
+
+  split:
+    train: 0.85
+    val: 0.15
+
+  augmentation:
+    enabled: true
+    horizontal_flip: 0.5
+    vertical_flip: 0.0
+    rotation_degrees: 10
+    brightness: 0.1
+    contrast: 0.1
+    random_erasing: 0.1
+
+model:
+  backbone:
+    name: "convnextv2_large.fcmae_ft_in22k_in1k_384"
+    pretrained: true
+    freeze_layers: 0
+    feature_dim: 1536
+    projection_dropout: 0.2
+
+  projection_dim: 512
+
+  lateral_fusion:
+    num_heads: 8
+    attention_dropout: 0.15
+    ffn_dropout: 0.2
+    projection_dropout: 0.2
+    num_layers: 2
+    use_deformable: true
+    num_deformable_points: 4
+
+  bilateral_fusion:
+    num_heads: 8
+    attention_dropout: 0.2
+    output_dropout: 0.25
+    use_diff: true
+    use_avg: true
+
+  classification:
+    num_classes: 4
+    hidden_dim: 256
+    dropout: 0.5
+    temperature: 1.5
+
+training:
+  epochs: 100
+  batch_size: 2
+  gradient_accumulation_steps: 32
+
+  optimizer:
+    name: "adamw"
+    lr: 5.0e-5
+    backbone_lr_scale: 0.2
+    weight_decay:
+      backbone: 0.05
+      fusion: 0.05
+      head: 0.01
+    betas: [0.9, 0.999]
+
+  scheduler:
+    name: "onecycle"
+    max_lr: 5.0e-4
+    pct_start: 0.3
+    div_factor: 10.0
+    final_div_factor: 100.0
+    anneal_strategy: "cos"
+
+  loss_type: "ce"
+  label_smoothing: 0.05
+
+  loss_weights:
+    binary_head: 0.10
+    subgroup_head: 0.45
+    full_head: 0.45
+
+  class_weights: [1.28, 1.00, 1.20, 1.11]
+
+  use_swa: true
+  swa_start_epoch: 5
+
+  asymmetry_loss_weight: 0.0
+  asymmetry_margin: 15.0
+  asymmetry_benign_weight: 0.0
+  asymmetry_malign_weight: 1.0
+
+  early_stopping:
+    enabled: true
+    patience: 20
+    metric: "val_full_f1_macro"
+    mode: "max"
+
+ablation:
+  use_lateral_fusion: true
+  use_bilateral_fusion: true
+  use_binary_head: true
+  use_subgroup_head: true
+  use_uncertainty: true
+  use_ordinal_head: false
+
+mlflow:
+  tracking_uri: "https://dagshub.com/alilivanturk/Mammography-BIRADS-PNG8Bit.mlflow"
+  experiment_name: "birads-1024-16bit-ablation"
+  dagshub_username: "alilivanturk"
+  dagshub_token: "d176ee2b4802fb2eb5e703cde1065dec251804e1"
+  log_every_n_steps: 50
+
+wandb:
+  project: "mammography-birads-classification"
+  entity: ""
+
+visualization:
+  gradcam:
+    enabled: true
+    target_layer: "auto"
+    num_samples: 20
+    save_dir: "outputs/convnextv2_large_16bit_ablation_f1/gradcam"
+  confusion_matrix:
+    save_dir: "outputs/convnextv2_large_16bit_ablation_f1/plots"
+  classification_report:
+    save_dir: "outputs/convnextv2_large_16bit_ablation_f1/reports"
+
+checkpoint:
+  save_dir: "outputs/convnextv2_large_16bit_ablation_f1/checkpoints"
+  save_top_k: 3
+  save_last: true

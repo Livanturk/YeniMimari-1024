@@ -1,8 +1,12 @@
 experiments/
 */__pycache__/
-outputs/
+outputs/*/checkpoints
+outputs/*/gradcam
+outputs/*/plots
 Dataset_1024_8bit/
 Dataset_Test_1024_8bit/
+Dataset_1024_16bit/
+Dataset_Test_1024_16bit/
 wandb/
 mlflow.db
 __pycache__/
