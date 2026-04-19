@@ -1,0 +1,174 @@
+# =============================================================================
+# F2 τ=1.0 — ConvNeXtV2-Large + Logit-Adjusted CE | 8-bit 1024² | C6 base + LA
+# =============================================================================
+# C6'nın üzerine SADECE full-head loss değiştirilir: CE → Logit-Adjusted CE
+# (Menon et al., ICLR 2021). Binary ve subgroup head'ler standart CE kalır.
+#
+# Motivasyon (Tier 1 findings, Lessons #47/#48):
+#   Tier 1 inference-time boru hattı tavanı 0.6808 (tta8 baseline, +0.45pp).
+#   Threshold offset (Task 1.3) val→test prior shift nedeniyle NEGATİF sonuç
+#   verdi (-0.53pp nonTTA, -0.18pp tta8). Gating (Task 1.4) nötr (hier bilgisi
+#   full head'de zaten mevcut, duplication).
+#
+#   Logit-Adjusted CE training-time'da aynı prior shift'i DOĞRUDAN modelleyerek
+#   çözer: train sırasında log(train_prior) logit'lere eklenir, model
+#   class-conditional likelihood-benzeri çıktılar öğrenir. Inference'ta RAW
+#   logit kullanılır → test prior'a karşı daha robust.
+#
+# Config diff (C6'dan):
+#   ~ training.loss_type: "ce" → "logit_adjusted"
+#   + training.logit_adjustment_tau: 1.0  (literature default, Menon 2021)
+#   + training.train_prior: [0.196, 0.322, 0.222, 0.260]  (BR1/BR2/BR4/BR5)
+#   Diğer tüm parametreler C6 ile AYNI (SWA, asymmetry=0, loss weights, vs.).
+#
+# Hipotez: Test F1 >= 0.69. BR4 recall (baseline 52.1%) belirgin iyileşir
+#   çünkü logit adjustment BR4 boundary'sini training-time'da prior'a göre
+#   şekillendirir, Task 1.3'ün zero-sum trade-off'undan kaçınır.
+# Kill kriteri: val_full_f1_macro < 0.60 by epoch 15.
+# =============================================================================
+
+project:
+  name: "mammography-birads-classification"
+  description: "F2 τ=1.0 — ConvNeXtV2-Large + Logit-Adjusted CE (Menon 2021) | 8-bit 1024 | base C6"
+  seed: 42
+
+data:
+  root_dir: "Dataset_1024_8bit"
+  test_dir: "Dataset_Test_1024_8bit"
+  image_size: 1024
+  num_workers: 4
+  pin_memory: true
+  bit_depth: 8
+  dataset_variant: "noseg"
+
+  split:
+    train: 0.85
+    val: 0.15
+
+  augmentation:
+    enabled: true
+    horizontal_flip: 0.5
+    vertical_flip: 0.0
+    rotation_degrees: 10
+    brightness: 0.1
+    contrast: 0.1
+    random_erasing: 0.1
+
+model:
+  backbone:
+    name: "convnextv2_large.fcmae_ft_in22k_in1k_384"
+    pretrained: true
+    freeze_layers: 0
+    feature_dim: 1536
+    projection_dropout: 0.2
+
+  projection_dim: 512
+
+  lateral_fusion:
+    num_heads: 8
+    attention_dropout: 0.15
+    ffn_dropout: 0.2
+    projection_dropout: 0.2
+    num_layers: 2
+    use_deformable: true
+    num_deformable_points: 4
+
+  bilateral_fusion:
+    num_heads: 8
+    attention_dropout: 0.2
+    output_dropout: 0.25
+    use_diff: true
+    use_avg: true
+
+  classification:
+    num_classes: 4
+    hidden_dim: 256
+    dropout: 0.5
+    temperature: 1.5
+
+training:
+  epochs: 100
+  batch_size: 2
+  gradient_accumulation_steps: 32
+
+  optimizer:
+    name: "adamw"
+    lr: 5.0e-5
+    backbone_lr_scale: 0.2
+    weight_decay:
+      backbone: 0.05
+      fusion: 0.05
+      head: 0.01
+    betas: [0.9, 0.999]
+
+  scheduler:
+    name: "onecycle"
+    max_lr: 5.0e-4
+    pct_start: 0.3
+    div_factor: 10.0
+    final_div_factor: 100.0
+    anneal_strategy: "cos"
+
+  # F2 CHANGE: Logit-Adjusted CE (Menon et al., ICLR 2021)
+  # Applied ONLY to full_head; binary and subgroup heads use standard CE.
+  loss_type: "logit_adjusted"
+  logit_adjustment_tau: 1.0
+  train_prior: [0.196, 0.322, 0.222, 0.260]   # BR1/BR2/BR4/BR5, from Dataset_1024_8bit (8,557 patients)
+
+  label_smoothing: 0.05
+
+  loss_weights:
+    binary_head: 0.10
+    subgroup_head: 0.45
+    full_head: 0.45
+
+  class_weights: [1.28, 1.00, 1.20, 1.11]
+
+  use_swa: true
+  swa_start_epoch: 5
+
+  asymmetry_loss_weight: 0.0
+  asymmetry_margin: 15.0
+  asymmetry_benign_weight: 0.0
+  asymmetry_malign_weight: 1.0
+
+  early_stopping:
+    enabled: true
+    patience: 20
+    metric: "val_full_f1_macro"
+    mode: "max"
+
+ablation:
+  use_lateral_fusion: true
+  use_bilateral_fusion: true
+  use_binary_head: true
+  use_subgroup_head: true
+  use_uncertainty: true
+  use_ordinal_head: false
+
+mlflow:
+  tracking_uri: "https://dagshub.com/alilivanturk/Mammography-BIRADS-PNG8Bit.mlflow"
+  experiment_name: "birads-1024-8bit-ablation"
+  dagshub_username: "alilivanturk"
+  dagshub_token: "d176ee2b4802fb2eb5e703cde1065dec251804e1"
+  log_every_n_steps: 50
+
+wandb:
+  project: "mammography-birads-classification"
+  entity: ""
+
+visualization:
+  gradcam:
+    enabled: true
+    target_layer: "auto"
+    num_samples: 20
+    save_dir: "outputs/convnextv2_large_8bit_f2_tau10/gradcam"
+  confusion_matrix:
+    save_dir: "outputs/convnextv2_large_8bit_f2_tau10/plots"
+  classification_report:
+    save_dir: "outputs/convnextv2_large_8bit_f2_tau10/reports"
+
+checkpoint:
+  save_dir: "outputs/convnextv2_large_8bit_f2_tau10/checkpoints"
+  save_top_k: 3
+  save_last: true

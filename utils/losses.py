@@ -261,6 +261,74 @@ class FocalLoss(nn.Module):
         return loss
 
 
+class LogitAdjustedCE(nn.Module):
+    """
+    Logit-Adjusted Cross Entropy (Menon et al., ICLR 2021:
+    "Long-tail learning via logit adjustment").
+
+    Training-time transform:
+        adjusted_logits = logits + tau * log(train_prior)
+        loss = CE(adjusted_logits, targets, weight, label_smoothing)
+
+    Inference-time: use RAW logits (no adjustment).
+
+    The additive log-prior term pushes the model to produce a tempered
+    Bayes-optimal classifier so that its raw logits approximate the
+    class-conditional likelihoods. Under test-time prior shift, this is
+    more robust than plain CE + class weights because the correction is
+    additive in logit space (argmax-shifting) rather than multiplicative
+    on the gradient (which is zero-sum on shared decision boundaries —
+    see Lessons #27, #47).
+
+    Degenerate cases (unit-tested):
+      - Uniform prior (any tau): constant shift across classes → exactly
+        equivalent to standard CE (softmax is shift-invariant).
+      - tau = 0: exactly equivalent to standard CE.
+
+    Args:
+        train_prior: (K,) list/tensor of class frequencies (normalized or raw).
+        tau: strength of adjustment. 1.0 matches the Menon et al. default.
+        label_smoothing: forwarded to F.cross_entropy.
+        class_weights: optional (K,) tensor of per-class loss weights.
+    """
+
+    def __init__(
+        self,
+        train_prior,
+        tau: float = 1.0,
+        label_smoothing: float = 0.05,
+        class_weights: Optional[torch.Tensor] = None,
+    ):
+        super().__init__()
+        prior = torch.tensor(train_prior, dtype=torch.float32)
+        prior = prior / prior.sum().clamp(min=1e-12)     # defensive normalize
+        self.register_buffer("log_prior", torch.log(prior.clamp(min=1e-12)))
+        self.tau = float(tau)
+        self.label_smoothing = float(label_smoothing)
+        if class_weights is not None:
+            self.register_buffer("class_weights_t", class_weights)
+        else:
+            self.register_buffer("class_weights_t", torch.empty(0))
+
+    def forward(self, logits: torch.Tensor, targets: torch.Tensor) -> torch.Tensor:
+        # Defensive: ensure buffers are on the same device as the incoming logits.
+        # build_loss_function also calls .to(device) on the outer MultiHeadLoss
+        # so this is usually a no-op, but it guards against callers that bypass
+        # the builder.
+        log_prior = self.log_prior.to(logits.device, non_blocking=True)
+        adjusted = logits + self.tau * log_prior
+        if self.class_weights_t.numel() > 0:
+            weight = self.class_weights_t.to(logits.device, non_blocking=True)
+        else:
+            weight = None
+        return F.cross_entropy(
+            adjusted,
+            targets,
+            weight=weight,
+            label_smoothing=self.label_smoothing,
+        )
+
+
 class MultiHeadLoss(nn.Module):
     """
     Hiyerarşik çoklu-kafa kayıp fonksiyonu.
@@ -294,6 +362,8 @@ class MultiHeadLoss(nn.Module):
         asymmetry_margin: float = 1.0,
         asymmetry_benign_weight: float = 1.0,
         asymmetry_malign_weight: float = 1.0,
+        train_prior: Optional[list] = None,
+        logit_adjustment_tau: float = 1.0,
     ):
         super().__init__()
 
@@ -346,6 +416,35 @@ class MultiHeadLoss(nn.Module):
             self.malign_sub_criterion = FocalLoss(
                 weight=class_weights_malign_sub,
                 gamma=focal_gamma,
+                label_smoothing=label_smoothing,
+            )
+        elif loss_type == "logit_adjusted":
+            if train_prior is None:
+                raise ValueError(
+                    "loss_type='logit_adjusted' requires training.train_prior "
+                    "in the config (list of K class frequencies)."
+                )
+            print(f"[LOSS] Logit-Adjusted CE aktif (Menon 2021): "
+                  f"tau={logit_adjustment_tau}, prior={train_prior}, "
+                  f"label_smoothing={label_smoothing}")
+            print(f"[LOSS] NOT: Logit adjustment SADECE full_head'e uygulanır. "
+                  f"Binary ve subgroup head'ler standart CE (prompt Task 2.2 kuralı).")
+            self.full_criterion = LogitAdjustedCE(
+                train_prior=train_prior,
+                tau=logit_adjustment_tau,
+                label_smoothing=label_smoothing,
+                class_weights=class_weights_4,
+            )
+            self.binary_criterion = nn.CrossEntropyLoss(
+                weight=class_weights_binary,
+                label_smoothing=label_smoothing,
+            )
+            self.benign_sub_criterion = nn.CrossEntropyLoss(
+                weight=class_weights_benign_sub,
+                label_smoothing=label_smoothing,
+            )
+            self.malign_sub_criterion = nn.CrossEntropyLoss(
+                weight=class_weights_malign_sub,
                 label_smoothing=label_smoothing,
             )
         else:
@@ -472,7 +571,7 @@ def build_loss_function(config: dict, device: torch.device) -> MultiHeadLoss:
     # Malign: BIRADS 4 (1898) vs BIRADS 5 (2227) → sqrt(2227/1898)=1.084 → [1.08, 1.00]
     class_weights_malign_sub = torch.tensor([1.08, 1.00], dtype=torch.float32).to(device)
 
-    return MultiHeadLoss(
+    criterion = MultiHeadLoss(
         loss_weights=train_cfg["loss_weights"],
         class_weights_4=class_weights_4,
         class_weights_binary=class_weights_binary,
@@ -488,4 +587,10 @@ def build_loss_function(config: dict, device: torch.device) -> MultiHeadLoss:
         asymmetry_margin=train_cfg.get("asymmetry_margin", 1.0),
         asymmetry_benign_weight=train_cfg.get("asymmetry_benign_weight", 1.0),
         asymmetry_malign_weight=train_cfg.get("asymmetry_malign_weight", 1.0),
+        train_prior=train_cfg.get("train_prior", None),
+        logit_adjustment_tau=train_cfg.get("logit_adjustment_tau", 1.0),
     )
+    # Move registered buffers (e.g. LogitAdjustedCE.log_prior) onto the target device.
+    # nn.CrossEntropyLoss/FocalLoss weights were already pre-placed, but buffers
+    # attached inside sub-modules are only moved via nn.Module.to().
+    return criterion.to(device)
