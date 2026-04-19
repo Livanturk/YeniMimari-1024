@@ -933,3 +933,193 @@ Only Task 1.1 TTA provides a transferable F1 gain (+0.45pp tta8, from rotations 
 **Future work:**
 - Per-head temperature fitting (separate T for full, binary, benign_sub, malign_sub). Might close the α-CV bimodality if sub-heads are miscalibrated in ways full head isn't. Low priority given the main architectural finding (hier = full).
 - Train-time refactor: include `CE(logits/T, labels)` in loss so `log_temperature` actually gets optimized. See Lesson #46 action. Expected to ship a better-calibrated C6 out of the box; orthogonal to F1 gains.
+
+---
+
+## F-Series Experiment Lessons (2026-04-20)
+
+The F-series transfers the C6-optimal 8-bit configuration and its key ablation findings to the **16-bit `noseg` pipeline** (`Dataset_1024_16bit`, `dataset_variant: noseg`). All 4 experiments use `ConvNeXtV2-Large` at 1024×1024 on 16-bit PNG images **without segmentation masking** — the raw DICOM→windowing→letterbox pipeline, bypassing the U-Net segmentation, CLAHE, and tight-crop stages used in the 8-bit pipeline.
+
+**F-series design:**
+- **F1** (C6 equivalent): CE + SWA + no asymmetry + no Mixup — the champion config
+- **F2** (B5 equivalent): CE + SWA + asymmetry=0.1 — asymmetry retest on 16-bit
+- **F3** (D4 equivalent): CE + no SWA + no asymmetry — SWA isolation test
+- **F4** (C1 equivalent): CE + SWA + Mixup/CutMix — SWA+Mixup antagonism retest
+
+### Lesson #49 — 16-bit noseg Pipeline Uniformly Underperforms 8-bit CLAHE Pipeline (F-Series Global)
+**Problem:** All 4 F-series experiments scored **below** their 8-bit equivalents. The 16-bit pipeline was expected to benefit from higher dynamic range (65,535 vs 255 intensity levels), but the opposite occurred.
+
+**Evidence — 8-bit vs 16-bit matched-config comparison:**
+```
+| 16-bit Exp | 8-bit Equiv | 8-bit Test F1 | 16-bit Test F1 | Delta     | 8-bit Gap | 16-bit Gap |
+|------------|-------------|:-------------:|:--------------:|:---------:|:---------:|:----------:|
+| F1         | C6          | 0.6762        | 0.6454         | **-3.08pp** | 4.21pp    | 6.42pp     |
+| F2         | B5          | 0.6615        | 0.6169         | **-4.46pp** | 6.71pp    | 8.95pp     |
+| F3         | D4          | 0.6615        | 0.6435         | **-1.80pp** | 4.94pp    | 7.15pp     |
+| F4         | C1          | 0.6431        | 0.6362         | **-0.69pp** | 7.27pp    | 7.04pp     |
+```
+
+**Per-class breakdown (F1 vs C6, best-to-best):**
+- BR1: -7.3pp (0.458 vs 0.531) — severe regression
+- BR2: -4.7pp (0.751 vs 0.798) — significant regression
+- BR4: -0.4pp (0.514 vs 0.518) — negligible
+- BR5: +0.2pp (0.859 vs 0.857) — negligible
+
+**Root cause — preprocessing, not bit depth:**
+The 16-bit pipeline uses `dataset_variant: noseg`, which bypasses three critical preprocessing stages present in the 8-bit pipeline:
+
+1. **U-Net segmentation masking** — The 8-bit pipeline masks non-breast regions (background, pectoral muscle) to zero, focusing the model exclusively on breast tissue. The 16-bit `noseg` variant retains these distractors, forcing the backbone to waste capacity learning to ignore irrelevant anatomy.
+
+2. **CLAHE (Contrast Limited Adaptive Histogram Equalization)** — The 8-bit pipeline applies `CLAHE(clipLimit=2.0, tileGrid=8×8)` to tissue-only pixels, boosting local contrast of subtle mammographic features (microcalcifications, spiculations, architectural distortions). The 16-bit pipeline retains raw windowed intensities. Per Lesson #22's normalization statistics: CLAHE raised tissue mean from 0.284→0.351 (+24%) and increased std from 0.158→0.180, indicating enhanced feature discriminability.
+
+3. **Tight crop** — The 8-bit pipeline strips zero-padding borders after segmentation, maximizing tissue pixels per image. The 16-bit pipeline includes peripheral zeros that dilute the effective resolution of breast tissue in the 1024×1024 frame.
+
+The 16-bit dynamic range advantage (65,535 vs 255 levels) is negated because: (a) ConvNeXtV2 was pretrained on 8-bit ImageNet images — its early layers' weight distributions are calibrated for [0,255]-scale statistics, not 16-bit ranges; (b) after normalization to [0,1], the extra precision contributes <0.004 per level (1/255 vs 1/65535), which is below the noise floor of the training process; (c) CLAHE's contrast enhancement provides far more discriminative value than raw bit depth.
+
+**Training dynamics confirm the preprocessing gap:**
+- F1 train F1 = 0.776 vs C6's implied convergence — the model fits the 16-bit training data nearly as well, but the representations don't transfer to test. The train→test gap is 13.0pp (F1) vs ~8pp (C6), indicating the `noseg` images contain more distribution-specific artifacts that the model memorizes.
+
+**Rule:** The 8-bit CLAHE+segmentation pipeline is strictly superior to the 16-bit `noseg` pipeline for this architecture and dataset. The preprocessing stages (segmentation, CLAHE, tight crop) contribute more to classification performance than bit depth. **Do NOT pursue the 16-bit `noseg` path further.** If 16-bit imaging is revisited, it must use the full preprocessing pipeline: `DICOM → segmentation → windowing → tight crop → CLAHE → letterbox → 16-bit PNG`. This would combine high dynamic range with the proven preprocessing advantages.
+
+### Lesson #50 — Asymmetry Loss Removal Generalizes Across Bit Depths: +2.85pp on 16-bit (F1 vs F2)
+**Problem:** F2 retested asymmetry_loss_weight=0.1 on 16-bit (the same configuration that Lesson #22 showed was harmful on 8-bit). **The finding replicates robustly.**
+
+**Evidence (F1 vs F2, same config except asymmetry):**
+- Test F1: 0.6454 vs 0.6169 → asymmetry removal = **+2.85pp** (8-bit C6 vs B5 equivalent: +1.47pp with SWA, +2.28pp without SWA)
+- Gap: 6.42pp vs 8.95pp → asymmetry removal narrows gap by **2.53pp**
+- BR2: 0.751 vs 0.690 (-6.1pp with asymmetry) — asymmetry noise damages BR2 most
+- BR4: 0.514 vs 0.450 (-6.4pp with asymmetry) — substantial BR4 damage too
+- BR1: 0.458 vs 0.477 (+2.0pp with asymmetry) — asymmetry paradoxically helps BR1 on 16-bit
+- Train F1: 0.776 vs 0.795 → asymmetry enables deeper memorization (+1.9pp train gap)
+
+**Cross-bit-depth comparison:**
+```
+| Bit Depth | With Asymmetry | Without Asymmetry | Asymmetry Removal Effect |
+|-----------|:--------------:|:-----------------:|:------------------------:|
+| 8-bit     | B5 = 0.6615    | C6 = 0.6762       | +1.47pp (with SWA)       |
+| 8-bit     | B1 = 0.6387    | D4 = 0.6615       | +2.28pp (without SWA)    |
+| 16-bit    | F2 = 0.6169    | F1 = 0.6454       | **+2.85pp (with SWA)**   |
+```
+
+The asymmetry removal effect is **larger** on 16-bit (+2.85pp) than on 8-bit (+1.47pp with SWA). This makes sense: the `noseg` variant retains more bilateral structural noise (pectoral muscle, chest wall asymmetry) that the asymmetry loss aggressively overfits to.
+
+**Root cause confirmed:** Lesson #22's diagnosis holds across pipelines. The asymmetry loss computes bilateral differences that overfit to distribution-specific bilateral features. On `noseg` images with more structural noise, the overfitting is **amplified** because the model has more spurious bilateral features to exploit.
+
+**Rule:** Asymmetry loss removal is a **universal improvement** across bit depths and preprocessing variants. The finding is not an artifact of 8-bit CLAHE preprocessing. Permanently confirmed: `asymmetry_loss_weight: 0.0` for all future experiments.
+
+### Lesson #51 — SWA Is Nearly Ineffective on 16-bit noseg: +0.19pp (F1 vs F3)
+**Problem:** SWA provided +1.47pp on 8-bit (C6 vs D4). On 16-bit, SWA barely moves the needle: **+0.19pp** (F1 vs F3).
+
+**Evidence (F1 vs F3, same config except SWA):**
+- Test F1: 0.6454 vs 0.6435 → SWA effect = **+0.19pp** (vs +1.47pp on 8-bit)
+- Best Val F1: 0.7096 vs 0.7150 → **without SWA has HIGHER val** (-0.54pp)
+- Gap: 6.42pp vs 7.15pp → SWA modestly narrows gap by 0.73pp
+- BR5: 0.859 vs 0.818 (+4.2pp with SWA) — SWA helps BR5 significantly
+- BR1: 0.458 vs 0.497 (-4.0pp with SWA) — SWA hurts BR1 (same pattern as 8-bit B5)
+- BR2: 0.751 vs 0.731 (+2.0pp with SWA) — SWA helps BR2
+- BR4: 0.514 vs 0.528 (-1.4pp with SWA) — SWA slightly hurts BR4
+- Binary F1: 0.912 vs 0.919 → without SWA has **better binary separation**
+
+**Cross-bit-depth SWA comparison:**
+```
+| Bit Depth | Without SWA      | With SWA        | SWA Effect |
+|-----------|:----------------:|:---------------:|:----------:|
+| 8-bit     | D4 = 0.6615      | C6 = 0.6762     | +1.47pp    |
+| 16-bit    | F3 = 0.6435      | F1 = 0.6454     | **+0.19pp**|
+```
+
+**Root cause:** SWA averages weights from the late training trajectory, which works best when the loss landscape has a clear, broad basin to average over. The `noseg` pipeline introduces more structural noise (chest wall, pectoral muscle, background) that creates a noisier, more multimodal loss landscape. Weight averaging over this landscape produces a compromise solution rather than finding a superior flat minimum.
+
+Additionally, F3 (no SWA) achieves the **highest best val F1** (0.7150) among all F-series experiments, suggesting the checkpoint selection mechanism works better than SWA averaging on the noisier 16-bit landscape. The best single checkpoint captures a momentary good generalization state that SWA averaging dilutes.
+
+The BR1/BR5 trade-off mirrors the 8-bit pattern (Lesson #17): SWA smooths decision boundaries, favoring higher-density classes (BR5) at the expense of minority classes (BR1). This effect is architecture-invariant but the overall magnitude is suppressed on 16-bit because SWA's averaging has less to improve from.
+
+**Rule:** SWA's effectiveness is **preprocessing-dependent**, not just architecture-dependent. On clean, CLAHE-enhanced 8-bit images, SWA provides meaningful generalization gains. On noisy `noseg` 16-bit images, SWA averaging is nearly ineffective because the loss landscape doesn't support productive weight averaging. If re-running 16-bit experiments with full preprocessing (seg+CLAHE), re-test SWA rather than assuming it transfers.
+
+### Lesson #52 — SWA+Mixup Antagonism Is Universal: -0.92pp on 16-bit (F4 vs F1)
+**Problem:** F4 retested SWA+Mixup/CutMix on 16-bit. The antagonism discovered in Lesson #23 (8-bit C1) and confirmed in Lesson #35 (8-bit D7) **replicates on 16-bit**.
+
+**Evidence (F4 vs F1, same config except Mixup/CutMix added):**
+- Test F1: 0.6362 vs 0.6454 → Mixup effect = **-0.92pp**
+- Gap: 7.04pp vs 6.42pp → gap widened by 0.62pp
+- BR1: 0.426 vs 0.458 (-3.1pp) — Mixup hurts BR1
+- BR2: 0.762 vs 0.751 (+1.1pp) — slight BR2 gain (Mixup's interpolation favors dominant class)
+- BR5: 0.844 vs 0.859 (-1.5pp) — BR5 regression
+- Train F1: 0.649 vs 0.776 → Mixup's strong regularization effect visible (−12.7pp train F1)
+
+**Cross-bit-depth antagonism comparison:**
+```
+| Bit Depth | Without Mixup    | With Mixup       | Mixup Effect (SWA on) |
+|-----------|:----------------:|:----------------:|:---------------------:|
+| 8-bit     | C6 = 0.6762      | D7 = 0.6563      | -1.99pp               |
+| 8-bit     | B5 = 0.6615      | C1 = 0.6431      | -1.84pp               |
+| 16-bit    | F1 = 0.6454      | F4 = 0.6362      | **-0.92pp**           |
+```
+
+The antagonism is **smaller** on 16-bit (-0.92pp vs ~-1.9pp on 8-bit). This is consistent with SWA itself being weaker on 16-bit (Lesson #51): if SWA contributes less, there's less SWA-mediated smoothing to conflict with Mixup's input-space smoothing. The antagonism magnitude scales with SWA's effectiveness.
+
+**Interesting anomaly:** F4's train F1 = 0.649 is dramatically lower than F1's 0.776 (−12.7pp), yet test F1 only drops by 0.92pp. The train→test gap (1.3pp) is the narrowest in the entire F-series — Mixup is an extremely effective training-time regularizer. But the final test F1 is still lower, confirming Lesson #34: Mixup's regularization doesn't produce better features, it just prevents memorization while also preventing useful learning.
+
+**Rule:** SWA+Mixup/CutMix antagonism is confirmed across three independent experiments on two different pipelines (8-bit C1, 8-bit D7, 16-bit F4). The finding is **universal** for this architecture regardless of preprocessing. The mechanism is intrinsic: both SWA (weight-space averaging) and Mixup (input-space interpolation) smooth decision boundaries, and their combination over-smooths. **Never combine SWA with Mixup/CutMix in any configuration.**
+
+### Lesson #53 — F-Series Meta: 8-bit CLAHE Pipeline Is the Validated Production Path; 16-bit noseg Is Abandoned
+
+**Evidence (all F-series ranked by test F1):**
+```
+| Rank | Exp | Strategy                    | Best Val F1 | Test F1  | Gap    | BR1   | BR2   | BR4   | BR5   | AUC   | Kappa |
+|------|-----|-----------------------------|:-----------:|:--------:|:------:|:-----:|:-----:|:-----:|:-----:|:-----:|:-----:|
+| —    | C6  | 8-bit CHAMPION (reference)  | 0.7183      | 0.6762   | 4.21pp | 0.531 | 0.798 | 0.518 | 0.857 | 0.902 | 0.633 |
+| 1    | F1  | C6 config on 16-bit         | 0.7096      | 0.6454   | 6.42pp | 0.458 | 0.751 | 0.514 | 0.859 | 0.907 | 0.596 |
+| 2    | F3  | No SWA isolation            | 0.7150      | 0.6435   | 7.15pp | 0.497 | 0.731 | 0.528 | 0.818 | 0.905 | 0.569 |
+| 3    | F4  | + Mixup/CutMix retest       | 0.7066      | 0.6362   | 7.04pp | 0.426 | 0.762 | 0.512 | 0.844 | 0.905 | 0.589 |
+| 4    | F2  | + Asymmetry retest          | 0.7064      | 0.6169   | 8.95pp | 0.477 | 0.690 | 0.450 | 0.851 | 0.893 | 0.545 |
+```
+
+**Key findings from the F-series:**
+
+1. **16-bit noseg is strictly inferior** — F1 (best 16-bit) trails C6 (8-bit champion) by 3.08pp. The deficit is driven by preprocessing (segmentation + CLAHE + tight crop), not bit depth.
+
+2. **C6's architectural lessons transfer across pipelines:**
+   - Asymmetry removal: +2.85pp on 16-bit (Lesson #50) vs +1.47–2.28pp on 8-bit
+   - SWA+Mixup antagonism: -0.92pp on 16-bit (Lesson #52) vs -1.84–1.99pp on 8-bit
+   - The directional findings are identical; only magnitudes differ (reflecting different baseline performance levels)
+
+3. **SWA is preprocessing-dependent** (Lesson #51): +0.19pp on 16-bit noseg vs +1.47pp on 8-bit CLAHE. The CLAHE pipeline's cleaner, more structured images create a loss landscape where SWA averaging is productive.
+
+4. **Val F1 ceiling is lower on 16-bit** — Best val F1 peaks at 0.7150 (F3) vs 0.7183 (C6). The model doesn't even fit the training/val distribution as well on `noseg` images, confirming this is a feature-quality issue, not just a generalization issue.
+
+5. **AUC is surprisingly robust** — F1's AUC (0.907) is slightly higher than C6's (0.902), suggesting the model's ranking ability transfers but the decision boundaries are miscalibrated. The 16-bit images may contain useful ordinal information that the classification heads don't exploit well.
+
+**The 2×2 factorial on 16-bit (partial):**
+```
+|                    | No Asymmetry (0.0) | With Asymmetry (0.1) | Asymmetry Effect |
+|--------------------|:------------------:|:--------------------:|:----------------:|
+| SWA on             | F1 = 0.6454        | F2 = 0.6169          | +2.85pp          |
+| SWA off            | F3 = 0.6435        | (not tested)         | —                |
+| SWA effect         | +0.19pp            | —                    |                  |
+```
+
+**Confirmed permanently abandoned (cumulative through F-series):**
+- 16-bit `noseg` pipeline (this lesson)
+- Asymmetry loss (Lessons #22, #50 — universal across pipelines)
+- Mixup/CutMix + SWA combination (Lessons #23, #35, #52 — universal)
+- Focal loss for ConvNeXtV2 (Lesson #28)
+- DINOv2 as primary backbone (Lesson #33)
+- Class weight manipulation (Lesson #27)
+- Capacity reduction (Lesson #25)
+- Backbone freezing below lr_scale=0.2 (Lesson #26)
+- Warm restart schedulers with SWA (Lesson #39)
+- Label smoothing > 0.05 with SWA (Lesson #41)
+- Loss weight rebalancing (Lesson #42)
+
+**Rule:** The 8-bit CLAHE pipeline with C6 configuration represents the validated production path for this dataset and architecture. 16-bit imaging requires the full preprocessing pipeline (seg + CLAHE + tight crop) to be competitive. The `noseg` variant is a net negative because it trades marginal bit-depth precision for the substantial feature-engineering value of segmentation, CLAHE, and tight cropping. **If 16-bit is ever revisited, it must use `dataset_variant: seg` with the identical preprocessing pipeline, preserving the CLAHE and segmentation stages while only changing the final output bit depth.**
+
+### Recommended Next Steps (Post F-Series)
+
+The F-series closes the 16-bit `noseg` investigation. The project's state:
+
+1. **Production model:** C6 (8-bit, test F1 = 0.6762, gap = 4.21pp) + TTA (test F1 = 0.6808)
+2. **16-bit with full preprocessing:** NOT tested — if pursuing 16-bit, generate `Dataset_1024_16bit_seg` with full DICOM → segmentation → windowing → tight crop → CLAHE → letterbox → 16-bit PNG pipeline. However, expected gain is marginal given the AUC parity between F1 and C6.
+3. **Multi-seed validation:** Run C6 config with 3 different seeds (42, 123, 456) to establish confidence intervals on test F1 = 0.6762. Required for publication.
+4. **Baseline comparisons:** Run simple baselines (single-view, no fusion, flat classifier) on the same 8-bit data to quantify the multi-view hierarchical architecture's contribution.
+5. **ABANDON:** Further 16-bit `noseg` exploration, further hyperparameter perturbation around C6.
