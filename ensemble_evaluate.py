@@ -49,7 +49,7 @@ import seaborn as sns
 
 from models.full_model import build_model
 from data.dataset import create_dataloaders, MammographyDataset, prepare_patient_split
-from data.transforms import get_val_transforms, IMAGENET_MEAN, IMAGENET_STD
+from data.transforms import get_val_transforms, _get_norm_stats
 
 
 # =====================================================================
@@ -98,20 +98,29 @@ def load_model(config_path: str, checkpoint_path: str, device: torch.device):
     return model, config
 
 
-def get_tta_transforms(image_size: int) -> List[transforms.Compose]:
+def get_tta_transforms(image_size: int, data_cfg: dict) -> List[transforms.Compose]:
     """
     TTA için farklı transform pipeline'ları döndürür.
 
+    BUG FIX (Lesson #44): Normalize artık ImageNet stats yerine
+    _get_norm_stats(data_cfg) ile dataset-specific stats kullanıyor
+    (8-bit: mean=0.1210/std=0.1977, 16-bit: 0.1220/0.2044).
+
+    Not: view-swap-aware hflip Task 1.1'de ayrı bir script'te ele alınıyor.
+    Bu fonksiyondaki hflip bilateral fusion semantiğini bozar — ensemble
+    eski modeller için bırakılmıştır, yeni TTA için tools/ altına bak.
+
     Augmentasyonlar:
         0. Orijinal (identity)
-        1. Horizontal flip
+        1. Horizontal flip (view-swap YOK — dikkat)
         2. +5 derece rotasyon
         3. -5 derece rotasyon
         4. Hafif zoom-in (1.05x)
     """
+    mean, std = _get_norm_stats(data_cfg)
     base_normalize = [
         transforms.ToTensor(),
-        transforms.Normalize(mean=IMAGENET_MEAN, std=IMAGENET_STD),
+        transforms.Normalize(mean=mean, std=std),
     ]
 
     tta_list = [
@@ -198,7 +207,7 @@ def get_model_predictions_tta(
     """
     data_cfg = config["data"]
     image_size = data_cfg["image_size"]
-    tta_transforms = get_tta_transforms(image_size)
+    tta_transforms = get_tta_transforms(image_size, data_cfg)
 
     # Test setini hazırla (sabit split)
     splits = prepare_patient_split(

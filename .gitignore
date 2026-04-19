@@ -11,3 +11,5 @@ wandb/
 mlflow.db
 __pycache__/
 mlruns/
+mlruns/0/
+artifacts/

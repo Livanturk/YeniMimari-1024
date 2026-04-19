@@ -240,10 +240,32 @@
 
 **Parallel strategy:** Run E7 first (~10h). Then E1+E2 as a pair (~17h). Then E5+E3.
 
-### Bonus: TTA on Existing C6 Model (FREE — no training)
-- [ ] Fix normalization bug in `ensemble_evaluate.py` (uses ImageNet stats instead of dataset stats)
-- [ ] Run: `python ensemble_evaluate.py --tta --config configs/experiment_v2_birads/convnextv2_large_8bit_ablation_c6.yaml`
-- [ ] Report TTA F1 improvement over C6 baseline
+### Bonus: TTA on Existing C6 Model (FREE — no training) — SUPERSEDED by Tier 1 pipeline below
+- [x] Fix normalization bug in `ensemble_evaluate.py` (cosmetic — train.py eval was bug-free, see Lesson #44)
+- [~] Old `ensemble_evaluate.py --tta` route abandoned: MODELS list is outdated and TTA lacks view-swap. Replaced by Tier 1 pipeline.
+
+---
+
+## Tier 1: Inference-Time Pipeline on C6 (IN PROGRESS, 2026-04-18)
+
+Baseline (post-fix): test F1 = **0.6762**, val F1 = 0.7218, gap = 4.55pp, ECE test = 0.214.
+Cache: `artifacts/c6_{val,test}_*.npy` (all 4 head logits + labels). Tier 1 tasks read from this cache — no further forward passes.
+
+- [x] Task 0.1 bug fix + logit extraction (Lesson #44)
+- [x] Task 1.1 TTA — tta8=0.6808 (+0.45pp), peak tta6=0.6847 (+0.84pp). hflip_swap hurts; rotations win. Lesson #45.
+- [x] Task 1.2 Temperature scaling — T_opt ≈ 0.73 (underconfident, not overconfident). ECE floor ~0.13 (scalar-T limit). Lesson #46.
+- [x] Task 1.3 Threshold offsets — NEGATIVE RESULT. Val +1.43pp but test −0.53pp (nonTTA) / −0.18pp (tta8). Zero-sum BR2↔BR4. Lesson #47. Excluded from default pipeline; ablation only.
+- [x] Task 1.4 Gating — NEUTRAL. Hard gate +0.03pp (nonTTA) / 0.00pp (tta8). Soft α-CV bimodal (tta8 std=0.49 guardrail broken). Pure hier < pure full. Hier duplicates full-head info. Lesson #48.
+- [ ] Task 1.5 Cumulative pipeline eval + ablation table + decision point — script: `tools/cumulative_eval_c6.py`
+
+### Tier 2 — Routing (decision depends on Task 1.5)
+
+Expected Task 1.5 cumulative: nonTTA ≈ 0.6765, tta8 ≈ 0.6807 → both < 0.70 → root-cause path.
+Root cause (Lessons #47, #48 combined): val→test prior shift + full-head-already-sub-head-informed.
+
+- [ ] Task 2.2 F2 — Logit-adjusted training (Menon et al. 2021), 3 tau ablations (0.5/1.0/1.5). Directly targets prior shift.
+- [~] Task 2.0 Multi-seed ensemble — defer (3×17h GPU, unjustified until F2 signals lift).
+- [~] Task 2.1 F1 16-bit — defer (300GB preprocessing; only if F2 fails).
 
 ---
 
