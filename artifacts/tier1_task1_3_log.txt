@@ -1,0 +1,76 @@
+[LOAD] non-TTA val=(1284, 4), test=(1655, 4)
+[LOAD] tta8     val=(1284, 4), test=(1655, 4)
+
+========================================================================
+  Track: nonTTA
+========================================================================
+  Val n=1284, Test n=1655
+  d1 grid: 21 points in [0, 1.0]
+  d4 grid: 25 points in [0, 1.2]
+
+  [NAIVE] whole-val optimum:  d1=0.050  d4=0.500  val F1=0.7380
+  [FOLD1] n= 257  d1=0.200  d4=0.450  fold_val F1=0.7316
+  [FOLD2] n= 257  d1=0.000  d4=0.200  fold_val F1=0.7859
+  [FOLD3] n= 257  d1=0.050  d4=0.300  fold_val F1=0.7364
+  [FOLD4] n= 257  d1=0.000  d4=0.600  fold_val F1=0.7426
+  [FOLD5] n= 256  d1=0.050  d4=0.600  fold_val F1=0.7434
+
+  [CV]  fold optima: d1 mean=0.060 std=0.073 median=0.050
+  [CV]  fold optima: d4 mean=0.430 std=0.160 median=0.450
+  [GUARDRAIL] std(d1) < 0.3: True  |  std(d4) < 0.3: True
+
+  [APPLY] final (CV-mean) d1=0.060  d4=0.430
+  [APPLY] val   F1 : 0.7218 → 0.7360  (Δ +1.43pp)
+  [APPLY] test  F1 : 0.6762 → 0.6709  (Δ -0.53pp)
+  [APPLY] test  per-class F1: 1=0.533, 2=0.746, 4=0.546, 5=0.859
+  [APPLY] test  per-class recall: 1=0.552, 2=0.664, 4=0.663, 5=0.855
+  [OVERFIT] naive-vs-CV test F1 gap: -0.610pp (|gap| > 1pp = overfit warning)
+
+========================================================================
+  Track: tta8
+========================================================================
+  Val n=1284, Test n=1655
+  d1 grid: 21 points in [0, 1.0]
+  d4 grid: 25 points in [0, 1.2]
+
+  [NAIVE] whole-val optimum:  d1=0.000  d4=0.450  val F1=0.7467
+  [FOLD1] n= 257  d1=0.300  d4=0.450  fold_val F1=0.7272
+  [FOLD2] n= 257  d1=0.000  d4=0.550  fold_val F1=0.7908
+  [FOLD3] n= 257  d1=0.000  d4=0.400  fold_val F1=0.7266
+  [FOLD4] n= 257  d1=0.250  d4=0.400  fold_val F1=0.7437
+  [FOLD5] n= 256  d1=0.000  d4=0.000  fold_val F1=0.7582
+
+  [CV]  fold optima: d1 mean=0.110 std=0.136 median=0.000
+  [CV]  fold optima: d4 mean=0.360 std=0.188 median=0.400
+  [GUARDRAIL] std(d1) < 0.3: True  |  std(d4) < 0.3: True
+
+  [APPLY] final (CV-mean) d1=0.110  d4=0.360
+  [APPLY] val   F1 : 0.7257 → 0.7364  (Δ +1.07pp)
+  [APPLY] test  F1 : 0.6808 → 0.6789  (Δ -0.18pp)
+  [APPLY] test  per-class F1: 1=0.556, 2=0.760, 4=0.542, 5=0.859
+  [APPLY] test  per-class recall: 1=0.613, 2=0.681, 4=0.622, 5=0.862
+  [OVERFIT] naive-vs-CV test F1 gap: -1.309pp (|gap| > 1pp = overfit warning)
+
+========================================================================
+  Task 1.3 — Summary (both tracks)
+========================================================================
+  Track        d1     d4  Test F1 base  Test F1 shifted     Δpp  std(d1)  std(d4)
+  nonTTA    0.060  0.430        0.6762           0.6709   -0.53    0.073    0.160
+  tta8      0.110  0.360        0.6808           0.6789   -0.18    0.136    0.188
+
+[SAVE] artifacts/c6_threshold_cv_metrics.json
+[SAVE] artifacts/c6_threshold_values.json
+
+[MLFL] Logging ...
+[MLFlow] Uzak sunucuya bağlandı: https://dagshub.com/alilivanturk/Mammography-BIRADS-PNG8Bit.mlflow
+[MLFlow] Run başlatıldı: 184f22d432d64e94942c38bdcdb3fbef
+🏃 View run tier1_task1_3_thresh_c6 at: https://dagshub.com/alilivanturk/Mammography-BIRADS-PNG8Bit.mlflow/#/experiments/21/runs/184f22d432d64e94942c38bdcdb3fbef
+🧪 View experiment at: https://dagshub.com/alilivanturk/Mammography-BIRADS-PNG8Bit.mlflow/#/experiments/21
+[MLFlow] Run sonlandırıldı: 184f22d432d64e94942c38bdcdb3fbef
+[MLFL] Done.
+
+[DONE] Task 1.3 complete. Downstream offsets:
+  nonTTA_d1 = 0.060
+  nonTTA_d4 = 0.430
+  tta8_d1 = 0.110
+  tta8_d4 = 0.360

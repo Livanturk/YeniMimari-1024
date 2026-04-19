@@ -1,0 +1,26 @@
+{
+  "config_path": "configs/experiment_v2_birads/convnextv2_large_8bit_ablation_c6.yaml",
+  "checkpoint_path": "outputs/convnextv2_large_8bit_ablation_c6/checkpoints/best_model.pt",
+  "ckpt_epoch": 100,
+  "learned_temperature": 1.5,
+  "val_n": 1284,
+  "test_n": 1655,
+  "class_ordering_full": [
+    "BIRADS_1",
+    "BIRADS_2",
+    "BIRADS_4",
+    "BIRADS_5"
+  ],
+  "class_ordering_binary": [
+    "Benign",
+    "Malign"
+  ],
+  "class_ordering_benign_sub": [
+    "BIRADS_1",
+    "BIRADS_2"
+  ],
+  "class_ordering_malign_sub": [
+    "BIRADS_4",
+    "BIRADS_5"
+  ]
+}

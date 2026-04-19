@@ -1,0 +1,8 @@
+{
+  "nonTTA_alpha_A": 0.58,
+  "nonTTA_alpha_B": 0.59,
+  "tta8_alpha_A": 0.4,
+  "tta8_alpha_B": 0.32999999999999996,
+  "nonTTA_best_variant": "C",
+  "tta8_best_variant": "C"
+}

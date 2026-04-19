@@ -1,0 +1,77 @@
+[LOAD] T_opt nonTTA = 0.7347, tta8 = 0.7229
+
+========================================================================
+  Track: nonTTA  (T_opt = 0.7347)
+========================================================================
+  Val n=1284, Test n=1655
+
+  (A) α-CV with T_opt:  folds 0.20, 1.00, 0.60, 0.70, 0.40  →  mean=0.580  std=0.271  median=0.600
+  (B) α-CV with T=1.0:  folds 0.20, 1.00, 0.60, 0.75, 0.40  →  mean=0.590  std=0.276
+
+  Variant                           α     std    Val F1    Test F1   Δ vs base
+  ----------------------------------------------------------------------------
+  (A) α-CV, T=0.73              0.580   0.271    0.7269     0.6731      -0.31pp
+  (B) α-CV, T=1.00              0.590   0.276    0.7269     0.6731      -0.31pp
+  (C) hard-gate, T_opt              —       —    0.7230     0.6765      +0.03pp
+  (D) pure hier, T_opt (α=1)    1.000   0.000    0.7234     0.6707      -0.55pp
+  (E) pure full, T_opt (baseline)  0.000   0.000    0.7218     0.6762      +0.00pp
+
+  BEST variant: (C)  Test F1 = 0.6765  (Δ +0.03pp vs baseline)
+  Per-class F1:     1=0.531, 2=0.799, 4=0.521, 5=0.855
+  Per-class recall: 1=0.546, 2=0.772, 4=0.528, 5=0.872
+  Confusion matrix (test, variant C):
+            pred_BR1 pred_BR2 pred_BR4 pred_BR5
+    true_BR1:        89       60       14        0   (total=163)
+    true_BR2:        79      460       57        0   (total=596)
+    true_BR4:         3       31      152      102   (total=288)
+    true_BR5:         1        4       73      530   (total=608)
+
+  Guardrail std(α) < 0.3:  (A) True  |  (B) True
+
+========================================================================
+  Track: tta8  (T_opt = 0.7229)
+========================================================================
+  Val n=1284, Test n=1655
+
+  (A) α-CV with T_opt:  folds 0.00, 1.00, 0.00, 1.00, 0.00  →  mean=0.400  std=0.490  median=0.000
+  (B) α-CV with T=1.0:  folds 0.00, 0.65, 0.00, 1.00, 0.00  →  mean=0.330  std=0.419
+
+  Variant                           α     std    Val F1    Test F1   Δ vs base
+  ----------------------------------------------------------------------------
+  (A) α-CV, T=0.72              0.400   0.490    0.7212     0.6776      -0.31pp
+  (B) α-CV, T=1.00              0.330   0.419    0.7222     0.6801      -0.07pp
+  (C) hard-gate, T_opt              —       —    0.7253     0.6807      -0.00pp
+  (D) pure hier, T_opt (α=1)    1.000   0.000    0.7233     0.6784      -0.24pp
+  (E) pure full, T_opt (baseline)  0.000   0.000    0.7257     0.6808      +0.00pp
+
+  BEST variant: (C)  Test F1 = 0.6807  (Δ -0.00pp vs baseline)
+  Per-class F1:     1=0.537, 2=0.803, 4=0.528, 5=0.854
+  Per-class recall: 1=0.577, 2=0.762, 4=0.531, 5=0.878
+  Confusion matrix (test, variant C):
+            pred_BR1 pred_BR2 pred_BR4 pred_BR5
+    true_BR1:        94       56       13        0   (total=163)
+    true_BR2:        87      454       55        0   (total=596)
+    true_BR4:         4       23      153      108   (total=288)
+    true_BR5:         2        2       70      534   (total=608)
+
+  Guardrail std(α) < 0.3:  (A) False  |  (B) False
+
+========================================================================
+  Task 1.4 — Summary (both tracks, best variant each)
+========================================================================
+  Track     BestVar      α   Test F1  Δ vs baseline
+  nonTTA          C      —    0.6765        +0.03pp
+  tta8            C      —    0.6807        -0.00pp
+
+[SAVE] artifacts/c6_gating_metrics.json
+[SAVE] artifacts/c6_gating_values.json
+
+[MLFL] Logging ...
+[MLFlow] Uzak sunucuya bağlandı: https://dagshub.com/alilivanturk/Mammography-BIRADS-PNG8Bit.mlflow
+[MLFlow] Run başlatıldı: 4c2c66dcfca241c3a886d031b334e1e3
+🏃 View run tier1_task1_4_gating_c6 at: https://dagshub.com/alilivanturk/Mammography-BIRADS-PNG8Bit.mlflow/#/experiments/21/runs/4c2c66dcfca241c3a886d031b334e1e3
+🧪 View experiment at: https://dagshub.com/alilivanturk/Mammography-BIRADS-PNG8Bit.mlflow/#/experiments/21
+[MLFlow] Run sonlandırıldı: 4c2c66dcfca241c3a886d031b334e1e3
+[MLFL] Done.
+
+[DONE] Task 1.4 complete.

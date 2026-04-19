@@ -1,0 +1,114 @@
+Warning: You are sending unauthenticated requests to the HF Hub. Please set a HF_TOKEN to enable higher rate limits and faster downloads.
+WARNING:huggingface_hub.utils._http:Warning: You are sending unauthenticated requests to the HF Hub. Please set a HF_TOKEN to enable higher rate limits and faster downloads.
+/home/alilivan.turk/Desktop/YeniMimari-1024/models/bilateral_fusion.py:81: UserWarning: enable_nested_tensor is True, but self.use_nested_tensor is False because encoder_layer.norm_first was True
+  self.transformer_encoder = nn.TransformerEncoder(
+[DEV ] GPU: NVIDIA H100 NVL
+[NORM] mean=0.1210, std=0.1977, fill_value (bg-eq)=-0.6120
+
+[BİLGİ] Veri seti tarama sonucu:
+  Kök dizin: Dataset_1024_8bit
+  Bulunan BI-RADS klasörleri: ['BI-RADS-1', 'BI-RADS-2', 'BI-RADS-4', 'BI-RADS-5']
+    Sınıf 0: 1678 hasta
+    Sınıf 1: 2754 hasta
+    Sınıf 2: 1898 hasta
+    Sınıf 3: 2227 hasta
+  Toplam hasta: 8557
+
+[BİLGİ] Veri seti tarama sonucu:
+  Kök dizin: Dataset_Test_1024_8bit
+  Bulunan BI-RADS klasörleri: ['BI-RADS-1', 'BI-RADS-2', 'BI-RADS-4', 'BI-RADS-5']
+    Sınıf 0: 163 hasta
+    Sınıf 1: 596 hasta
+    Sınıf 2: 288 hasta
+    Sınıf 3: 608 hasta
+  Toplam hasta: 1655
+
+[BİLGİ] Veri bölme tamamlandı:
+  Train: 7273 hasta (kaynak: Dataset_1024_8bit)
+  Val:   1284 hasta (kaynak: Dataset_1024_8bit)
+  Test:  1655 hasta (kaynak: Dataset_Test_1024_8bit)
+[BACKBONE] convnextv2_large.fcmae_ft_in22k_in1k_384: 1536-dim → 512-dim projeksiyon
+[BACKBONE] Spatial token sayısı: 1024
+[MODEL] Toplam parametre: 220,224,061
+[MODEL] Eğitilebilir parametre: 220,224,061
+[MODEL] Lateral fusion: AÇIK
+[MODEL] Bilateral fusion: AÇIK
+[MODEL] Spatial token sayısı: 1024
+[MODEL] Learned temperature: 1.5000 (will use T=1.0 here; temp scaling is Task 1.2)
+[BASE] Loaded baseline metrics from artifacts/c6_baseline_metrics.json
+
+================================================================
+  Running tta8 (8 views): ['identity', 'hflip_swap', 'rot_p5', 'rot_m5', 'rot_p10', 'rot_m10', 'hflip_swap_rot_p5', 'hflip_swap_rot_m5']
+================================================================
+
+[FWD ] tta8 / val ...
+
+  [val] batch 50/642  (×8 views)
+  [val] batch 100/642  (×8 views)
+  [val] batch 150/642  (×8 views)
+  [val] batch 200/642  (×8 views)
+  [val] batch 250/642  (×8 views)
+  [val] batch 300/642  (×8 views)
+  [val] batch 350/642  (×8 views)
+  [val] batch 400/642  (×8 views)
+  [val] batch 450/642  (×8 views)
+  [val] batch 500/642  (×8 views)
+  [val] batch 550/642  (×8 views)
+  [val] batch 600/642  (×8 views)
+  [val] batch 642/642  (×8 views)
+  [tta8/val] F1 macro = 0.7257, per-class F1 = 1=0.710, 2=0.749, 4=0.643, 5=0.801
+
+[FWD ] tta8 / test ...
+
+  [test] batch 50/828  (×8 views)
+  [test] batch 100/828  (×8 views)
+  [test] batch 150/828  (×8 views)
+  [test] batch 200/828  (×8 views)
+  [test] batch 250/828  (×8 views)
+  [test] batch 300/828  (×8 views)
+  [test] batch 350/828  (×8 views)
+  [test] batch 400/828  (×8 views)
+  [test] batch 450/828  (×8 views)
+  [test] batch 500/828  (×8 views)
+  [test] batch 550/828  (×8 views)
+  [test] batch 600/828  (×8 views)
+  [test] batch 650/828  (×8 views)
+  [test] batch 700/828  (×8 views)
+  [test] batch 750/828  (×8 views)
+  [test] batch 800/828  (×8 views)
+  [test] batch 828/828  (×8 views)
+  [tta8/test] F1 macro = 0.6808, per-class F1 = 1=0.537, 2=0.801, 4=0.528, 5=0.857
+
+================================================================
+  Deriving tta4 offline (first 4 of tta8): ['identity', 'hflip_swap', 'rot_p5', 'rot_m5']
+================================================================
+  [tta4/val] F1 macro = 0.7238, per-class F1 = 1=0.699, 2=0.747, 4=0.647, 5=0.802
+  [tta4/test] F1 macro = 0.6801, per-class F1 = 1=0.532, 2=0.801, 4=0.531, 5=0.856
+
+================================================================
+  Task 1.1 TTA — Summary vs C6 baseline
+================================================================
+  [tta8] Test F1=0.6808 (+0.45pp)  BR1=0.537 BR2=0.801 BR4=0.528 BR5=0.857  ECE=0.161
+  [tta4] Test F1=0.6801 (+0.39pp)  BR1=0.532 BR2=0.801 BR4=0.531 BR5=0.856  ECE=0.152
+
+  Per-view incremental (mean of first k view LOGITS, then softmax):
+    k=1  +identity                F1=0.6762 (+0.00pp)
+    k=2  +hflip_swap              F1=0.6740 (-0.22pp)
+    k=3  +rot_p5                  F1=0.6778 (+0.16pp)
+    k=4  +rot_m5                  F1=0.6801 (+0.39pp)
+    k=5  +rot_p10                 F1=0.6828 (+0.66pp)
+    k=6  +rot_m10                 F1=0.6847 (+0.84pp)
+    k=7  +hflip_swap_rot_p5       F1=0.6825 (+0.63pp)
+    k=8  +hflip_swap_rot_m5       F1=0.6808 (+0.45pp)
+
+[SAVE] artifacts/c6_tta_metrics.json
+
+[MLFL] Logging to MLflow ...
+[MLFlow] Uzak sunucuya bağlandı: https://dagshub.com/alilivanturk/Mammography-BIRADS-PNG8Bit.mlflow
+[MLFlow] Run başlatıldı: 2af06c6e1b7548dd9e00e14cf7fe5041
+🏃 View run tier1_task1_1_tta_c6 at: https://dagshub.com/alilivanturk/Mammography-BIRADS-PNG8Bit.mlflow/#/experiments/21/runs/2af06c6e1b7548dd9e00e14cf7fe5041
+🧪 View experiment at: https://dagshub.com/alilivanturk/Mammography-BIRADS-PNG8Bit.mlflow/#/experiments/21
+[MLFlow] Run sonlandırıldı: 2af06c6e1b7548dd9e00e14cf7fe5041
+[MLFL] Done.
+
+[DONE] Task 1.1 TTA complete.

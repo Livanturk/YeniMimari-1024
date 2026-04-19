@@ -1,0 +1,64 @@
+[LOAD] non-TTA val=(1284, 4), test=(1655, 4)
+[LOAD] tta8     val=(1284, 4), test=(1655, 4)
+
+====================================================================
+  Track: nonTTA
+====================================================================
+  LBFGS restarts:
+    start T=0.50  → converged T=0.7328  (val NLL=0.7255)
+    start T=1.00  → converged T=0.7347  (val NLL=0.7255)
+    start T=1.50  → converged T=0.7347  (val NLL=0.7255)
+  Selected T_optimal = 0.7347
+  [nonTTA/val /T1.0]  T=1.0000  NLL=0.7503  ECE=0.1245  Brier=0.4218  Conf=0.6425  F1=0.7218
+  [nonTTA/val /T1.5]  T=1.5000  NLL=0.8396  ECE=0.1967  Brier=0.4594  Conf=0.5355  F1=0.7218
+  [nonTTA/val /Topt]  T=0.7347  NLL=0.7255  ECE=0.1207  Brier=0.4100  Conf=0.7230  F1=0.7218
+  [nonTTA/test/T1.0]  T=1.0000  NLL=0.7270  ECE=0.1531  Brier=0.4054  Conf=0.6524  F1=0.6762
+  [nonTTA/test/T1.5]  T=1.5000  NLL=0.8183  ECE=0.2141  Brier=0.4422  Conf=0.5452  F1=0.6762
+  [nonTTA/test/Topt]  T=0.7347  NLL=0.7016  ECE=0.1323  Brier=0.3944  Conf=0.7295  F1=0.6762
+  ΔTest ECE (T_opt − T=1):  -0.0208
+  ΔTest NLL (T_opt − T=1):  -0.0253
+
+====================================================================
+  Track: tta8
+====================================================================
+  LBFGS restarts:
+    start T=0.50  → converged T=0.7213  (val NLL=0.7150)
+    start T=1.00  → converged T=0.7229  (val NLL=0.7150)
+    start T=1.50  → converged T=0.7233  (val NLL=0.7150)
+  Selected T_optimal = 0.7229
+  [tta8/val /T1.0]  T=1.0000  NLL=0.7424  ECE=0.1300  Brier=0.4202  Conf=0.6411  F1=0.7257
+  [tta8/val /T1.5]  T=1.5000  NLL=0.8343  ECE=0.2131  Brier=0.4577  Conf=0.5345  F1=0.7257
+  [tta8/val /Topt]  T=0.7229  NLL=0.7150  ECE=0.1220  Brier=0.4087  Conf=0.7250  F1=0.7257
+  [tta8/test/T1.0]  T=1.0000  NLL=0.7180  ECE=0.1609  Brier=0.4013  Conf=0.6475  F1=0.6808
+  [tta8/test/T1.5]  T=1.5000  NLL=0.8140  ECE=0.2121  Brier=0.4398  Conf=0.5414  F1=0.6808
+  [tta8/test/Topt]  T=0.7229  NLL=0.6868  ECE=0.1291  Brier=0.3887  Conf=0.7276  F1=0.6808
+  ΔTest ECE (T_opt − T=1):  -0.0319
+  ΔTest NLL (T_opt − T=1):  -0.0312
+
+====================================================================
+  Task 1.2 — Summary
+====================================================================
+  Track       T_opt   Test ECE T=1   Test ECE T_opt     ΔECE   F1 (T-inv)
+  nonTTA     0.7347         0.1531           0.1323  -0.0208       0.6762
+  tta8       0.7229         0.1609           0.1291  -0.0319       0.6808
+
+  (F1 is T-invariant by construction; shown only as sanity — should match Task 1.1 / baseline.)
+
+  Accept criterion: test ECE lower after T-scaling, F1 unchanged.
+    [nonTTA]  ECE reduced: True  |  F1 stable: True
+    [tta8]  ECE reduced: True  |  F1 stable: True
+
+[SAVE] artifacts/c6_temp_scale_metrics.json
+[SAVE] artifacts/c6_temperature_values.json
+
+[MLFL] Logging ...
+[MLFlow] Uzak sunucuya bağlandı: https://dagshub.com/alilivanturk/Mammography-BIRADS-PNG8Bit.mlflow
+[MLFlow] Run başlatıldı: 474616437c764849b0b7d6456e46aefe
+🏃 View run tier1_task1_2_temp_c6 at: https://dagshub.com/alilivanturk/Mammography-BIRADS-PNG8Bit.mlflow/#/experiments/21/runs/474616437c764849b0b7d6456e46aefe
+🧪 View experiment at: https://dagshub.com/alilivanturk/Mammography-BIRADS-PNG8Bit.mlflow/#/experiments/21
+[MLFlow] Run sonlandırıldı: 474616437c764849b0b7d6456e46aefe
+[MLFL] Done.
+
+[DONE] Task 1.2 complete. Downstream T values:
+  nonTTA T = 0.7347
+  tta8   T = 0.7229

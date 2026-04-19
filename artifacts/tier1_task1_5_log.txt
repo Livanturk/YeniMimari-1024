@@ -1,0 +1,66 @@
+[LOAD] T_opt: nonTTA=0.7347, tta8=0.7229
+[LOAD] thresh: nonTTA d1=0.060 d4=0.430, tta8 d1=0.110 d4=0.360
+
+==============================================================================
+  Track: nonTTA  (T_opt=0.7347, d1=0.060, d4=0.430)
+==============================================================================
+
+  Config                    Test F1    BR1    BR2    BR4    BR5   BinF1    ECE  MeanConf
+  --------------------------------------------------------------------------------------
+  C0_baseline                0.6762  0.531  0.798  0.518  0.857   0.939  0.153     0.652
+  C1_plus_Tscale             0.6762  0.531  0.798  0.518  0.857   0.939  0.132     0.729
+  C2_plus_T_gate             0.6765  0.531  0.799  0.521  0.855   0.940  0.124     0.716
+  C3_plus_T_thresh           0.6709  0.533  0.746  0.546  0.859   0.920  0.152     0.718
+  Cfull_T_gate_thresh        0.6621  0.533  0.748  0.513  0.855   0.920  0.122     0.695
+  Crec_T_gate                0.6765  0.531  0.799  0.521  0.855   0.940  0.124     0.716
+
+  Δ vs C0_baseline:
+    C1_plus_Tscale            Δ = +0.00pp
+    C2_plus_T_gate            Δ = +0.03pp
+    C3_plus_T_thresh          Δ = -0.53pp
+    Cfull_T_gate_thresh       Δ = -1.41pp
+    Crec_T_gate               Δ = +0.03pp
+
+==============================================================================
+  Track: tta8  (T_opt=0.7229, d1=0.110, d4=0.360)
+==============================================================================
+
+  Config                    Test F1    BR1    BR2    BR4    BR5   BinF1    ECE  MeanConf
+  --------------------------------------------------------------------------------------
+  C0_baseline                0.6808  0.537  0.801  0.528  0.857   0.945  0.161     0.648
+  C1_plus_Tscale             0.6808  0.537  0.801  0.528  0.857   0.945  0.129     0.728
+  C2_plus_T_gate             0.6807  0.537  0.803  0.528  0.854   0.946  0.118     0.714
+  C3_plus_T_thresh           0.6789  0.556  0.760  0.542  0.859   0.927  0.155     0.717
+  Cfull_T_gate_thresh        0.6686  0.556  0.761  0.503  0.854   0.928  0.133     0.695
+  Crec_T_gate                0.6807  0.537  0.803  0.528  0.854   0.946  0.118     0.714
+
+  Δ vs C0_baseline:
+    C1_plus_Tscale            Δ = +0.00pp
+    C2_plus_T_gate            Δ = -0.00pp
+    C3_plus_T_thresh          Δ = -0.18pp
+    Cfull_T_gate_thresh       Δ = -1.22pp
+    Crec_T_gate               Δ = -0.00pp
+
+==============================================================================
+  DECISION POINT
+==============================================================================
+  Best cumulative test F1: 0.6808  (at tta8/C0_baseline)
+  Verdict: ROUTE_ROOT_CAUSE_THEN_TIER2
+  Max cumulative F1 = 0.6808 < 0.70 → root-cause analysis before Tier 2. Sanity (E variants in Task 1.4 matched baseline) indicates no pipeline bug; root cause is architectural+data: inference-time tricks duplicate full-head info (Lesson #48) and val→test prior shift kills threshold (Lesson #47). Recommend Tier 2 Task 2.2 (F2, logit-adjusted training, Menon 2021) as directly-targeting intervention.
+
+[SAVE] artifacts/c6_cumulative_metrics.json
+
+[SAVE] Markdown ablation table → tasks/tier1_results.md
+
+[MLFL] Logging ...
+[MLFlow] Uzak sunucuya bağlandı: https://dagshub.com/alilivanturk/Mammography-BIRADS-PNG8Bit.mlflow
+[MLFlow] Run başlatıldı: 6f9a3ea13981477b8cc432c0603830f1
+🏃 View run tier1_cumulative_c6 at: https://dagshub.com/alilivanturk/Mammography-BIRADS-PNG8Bit.mlflow/#/experiments/21/runs/6f9a3ea13981477b8cc432c0603830f1
+🧪 View experiment at: https://dagshub.com/alilivanturk/Mammography-BIRADS-PNG8Bit.mlflow/#/experiments/21
+[MLFlow] Run sonlandırıldı: 6f9a3ea13981477b8cc432c0603830f1
+[MLFL] Done.
+
+[DONE] Task 1.5 complete.
+
+  >>> Decision: ROUTE_ROOT_CAUSE_THEN_TIER2
+  >>> Max cumulative F1 = 0.6808 < 0.70 → root-cause analysis before Tier 2. Sanity (E variants in Task 1.4 matched baseline) indicates no pipeline bug; root cause is architectural+data: inference-time tricks duplicate full-head info (Lesson #48) and val→test prior shift kills threshold (Lesson #47). Recommend Tier 2 Task 2.2 (F2, logit-adjusted training, Menon 2021) as directly-targeting intervention.

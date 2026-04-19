@@ -1,0 +1,123 @@
+/home/alilivan.turk/Desktop/YeniMimari-1024/models/bilateral_fusion.py:81: UserWarning: enable_nested_tensor is True, but self.use_nested_tensor is False because encoder_layer.norm_first was True
+  self.transformer_encoder = nn.TransformerEncoder(
+[DEV ] GPU: NVIDIA H100 NVL
+[DATA] Creating dataloaders via data.dataset.create_dataloaders ...
+
+[BİLGİ] Veri seti tarama sonucu:
+  Kök dizin: Dataset_1024_8bit
+  Bulunan BI-RADS klasörleri: ['BI-RADS-1', 'BI-RADS-2', 'BI-RADS-4', 'BI-RADS-5']
+    Sınıf 0: 1678 hasta
+    Sınıf 1: 2754 hasta
+    Sınıf 2: 1898 hasta
+    Sınıf 3: 2227 hasta
+  Toplam hasta: 8557
+
+[BİLGİ] Veri seti tarama sonucu:
+  Kök dizin: Dataset_Test_1024_8bit
+  Bulunan BI-RADS klasörleri: ['BI-RADS-1', 'BI-RADS-2', 'BI-RADS-4', 'BI-RADS-5']
+    Sınıf 0: 163 hasta
+    Sınıf 1: 596 hasta
+    Sınıf 2: 288 hasta
+    Sınıf 3: 608 hasta
+  Toplam hasta: 1655
+
+[BİLGİ] Veri bölme tamamlandı:
+  Train: 7273 hasta (kaynak: Dataset_1024_8bit)
+  Val:   1284 hasta (kaynak: Dataset_1024_8bit)
+  Test:  1655 hasta (kaynak: Dataset_Test_1024_8bit)
+[DATA] val=1284 patients, test=1655 patients
+[MODEL] Building model from config ...
+[BACKBONE] convnextv2_large.fcmae_ft_in22k_in1k_384: 1536-dim → 512-dim projeksiyon
+[BACKBONE] Spatial token sayısı: 1024
+[MODEL] Toplam parametre: 220,224,061
+[MODEL] Eğitilebilir parametre: 220,224,061
+[MODEL] Lateral fusion: AÇIK
+[MODEL] Bilateral fusion: AÇIK
+[MODEL] Spatial token sayısı: 1024
+[CKPT] Loaded outputs/convnextv2_large_8bit_ablation_c6/checkpoints/best_model.pt (epoch=100)
+[MODEL] Learned temperature (C6 final): 1.5000
+[FWD ] Val set ...
+
+  [val] batch 50/642
+  [val] batch 100/642
+  [val] batch 150/642
+  [val] batch 200/642
+  [val] batch 250/642
+  [val] batch 300/642
+  [val] batch 350/642
+  [val] batch 400/642
+  [val] batch 450/642
+  [val] batch 500/642
+  [val] batch 550/642
+  [val] batch 600/642
+  [val] batch 642/642
+[FWD ] Test set ...
+
+2026/04/18 21:39:40 INFO mlflow.tracking.fluent: Experiment with name 'birads-inference-pipeline' does not exist. Creating a new experiment.
+  [test] batch 50/828
+  [test] batch 100/828
+  [test] batch 150/828
+  [test] batch 200/828
+  [test] batch 250/828
+  [test] batch 300/828
+  [test] batch 350/828
+  [test] batch 400/828
+  [test] batch 450/828
+  [test] batch 500/828
+  [test] batch 550/828
+  [test] batch 600/828
+  [test] batch 650/828
+  [test] batch 700/828
+  [test] batch 750/828
+  [test] batch 800/828
+  [test] batch 828/828
+[SAVE] val: 1284 samples → artifacts/c6_val_*.npy
+[SAVE] test: 1655 samples → artifacts/c6_test_*.npy
+
+[METR] Computing val / test metrics with learned temperature ...
+
+================================================================
+  Bug-Fix Post C6 Baseline
+================================================================
+  Learned T            : 1.5000
+  Val  F1 macro        : 0.7218
+  Test F1 macro        : 0.6762
+  Val–Test gap         : +4.55pp
+  Test per-class F1    : BIRADS_1=0.531, BIRADS_2=0.798, BIRADS_4=0.518, BIRADS_5=0.857
+  Test Binary F1       : 0.9392
+  Test Cohen's kappa   : 0.6333
+  Test AUC-ROC (macro) : 0.9022
+  Test ECE (15 bins)   : 0.2141
+  Test Brier           : 0.4422
+  Test mean confidence : 0.5452
+  Val  ECE (15 bins)   : 0.1967
+  Val  mean confidence : 0.5355
+
+  Confusion matrix (test):
+             pred_BR1 pred_BR2 pred_BR4 pred_BR5
+   true_BR1:        89       60       14        0   (total=163)
+   true_BR2:        79      459       58        0   (total=596)
+   true_BR4:         3       31      150      104   (total=288)
+   true_BR5:         1        4       69      534   (total=608)
+
+[SAVE] Metrics → artifacts/c6_baseline_metrics.json
+
+[MLFL] Logging to MLflow ...
+[MLFlow] Uzak sunucuya bağlandı: https://dagshub.com/alilivanturk/Mammography-BIRADS-PNG8Bit.mlflow
+[MLFlow] Run başlatıldı: ecef19a5f0e44dd68f9903ad35366c24
+🏃 View run tier0_c6_baseline_postfix at: https://dagshub.com/alilivanturk/Mammography-BIRADS-PNG8Bit.mlflow/#/experiments/21/runs/ecef19a5f0e44dd68f9903ad35366c24
+🧪 View experiment at: https://dagshub.com/alilivanturk/Mammography-BIRADS-PNG8Bit.mlflow/#/experiments/21
+[MLFlow] Run sonlandırıldı: ecef19a5f0e44dd68f9903ad35366c24
+[MLFL] Done.
+
+[DONE] Tier 0 extraction complete. Cache files:
+  - artifacts/c6_test_benign_sub_logits.npy
+  - artifacts/c6_test_binary_logits.npy
+  - artifacts/c6_test_labels.npy
+  - artifacts/c6_test_logits.npy
+  - artifacts/c6_test_malign_sub_logits.npy
+  - artifacts/c6_val_benign_sub_logits.npy
+  - artifacts/c6_val_binary_logits.npy
+  - artifacts/c6_val_labels.npy
+  - artifacts/c6_val_logits.npy
+  - artifacts/c6_val_malign_sub_logits.npy
