@@ -13,3 +13,4 @@ __pycache__/
 mlruns/
 mlruns/0/
 artifacts/*.npy
+outputs/*.log
