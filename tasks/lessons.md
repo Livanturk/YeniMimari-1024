@@ -933,3 +933,52 @@ Only Task 1.1 TTA provides a transferable F1 gain (+0.45pp tta8, from rotations 
 **Future work:**
 - Per-head temperature fitting (separate T for full, binary, benign_sub, malign_sub). Might close the α-CV bimodality if sub-heads are miscalibrated in ways full head isn't. Low priority given the main architectural finding (hier = full).
 - Train-time refactor: include `CE(logits/T, labels)` in loss so `log_temperature` actually gets optimized. See Lesson #46 action. Expected to ship a better-calibrated C6 out of the box; orthogonal to F1 gains.
+
+### Lesson #49 (2026-04-21): F2 logit-adjusted training (Menon 2021) is harmful here — all τ regress, BR2 sacrificed, val-test gap WIDENS. Third manifestation of the BR2↔BR4 zero-sum axis.
+
+**Context:** Tier 2 Task 2.2 — F2 experiments with `LogitAdjustedCE` applied to the full head only (binary + subgroup kept as standard CE). Three τ values tested with identical C6 configuration except for loss (seed=42, SWA, asymmetry=0, same LR schedule, same class weights, same multi-task structure). Motivated by Lesson #47's finding that inference-time threshold offsets fail on val→test prior shift, we hypothesized training-time prior adjustment would succeed.
+
+**Finding (from `outputs/convnextv2_large_8bit_f2_tau{05,10,15}/reports/classification_report.txt`):**
+
+```
+Config         Best Val F1   Test F1   Δ vs C6    Val-Test Gap    BR1 F1   BR2 F1   BR4 F1   BR5 F1   SWA
+C6 (baseline)      0.7183    0.6762    —          4.6pp           0.531    0.798    0.518    0.857    WON
+F2 τ=0.5           0.7212    0.6418    −3.44pp    7.9pp           0.441    0.772    0.498    0.856    LOST
+F2 τ=1.0           0.7235    0.6471    −2.91pp    7.6pp           0.513    0.703    0.517    0.856    WON
+F2 τ=1.5           0.7200    0.6391    −3.71pp    8.1pp           0.505    0.699    0.499    0.854    WON
+```
+
+Per-class recall (test), C6 vs F2 τ=1.0:
+- BR1: 54.6% → 50.3%  (−4.3pp)
+- **BR2: 77.0% → 60.7%  (−16.3pp)** — catastrophic
+- **BR4: 52.1% → 67.7%  (+15.6pp)** — the only "gain"
+- BR5: 87.8% → 84.9%  (−2.9pp)
+
+**Interpretation — three overlapping failure modes:**
+
+1. **Val-test gap WIDENED (4.6pp → 7.6-8.1pp, +3pp worse).** This is the opposite of LA's intended effect. LA is supposed to close prior-shift gaps; here it acts as an **overfitting enhancer**. Val F1 stays near C6's (0.720-0.724), but test F1 drops by 3-4pp. The model learns val distribution harder; LA provides no transfer benefit.
+
+2. **BR2↔BR4 zero-sum axis — third manifestation.** F2 reproduces the same pattern as C3 class-weight manipulation (Lesson #27) and Task 1.3 threshold offsets (Lesson #47):
+   - C3: BR1 +1.2pp, BR2 −9.8pp (zero-sum on BR1↔BR2)
+   - Task 1.3: BR4 recall +14.2pp, BR2 recall −10.6pp (zero-sum on BR2↔BR4)
+   - F2 τ=1.0: BR4 recall +15.6pp, BR2 recall −16.3pp (zero-sum on BR2↔BR4)
+
+   **Rule:** Any intervention that mechanically shifts the decision boundary on the BR2↔BR4 axis (whether class weights, threshold offsets, or training-time prior adjustment) produces a zero-sum trade-off in this pipeline. BR2 is the majority test class (596 patients vs BR4's 288), so the 2:1 sample ratio guarantees net F1 regression when BR4 gains come from BR2 losses.
+
+3. **Double prior correction.** The loss already has `class_weights_4 = [1.28, 1.00, 1.20, 1.11]` (sqrt-inverse, which boosts BR1 and BR4). F2 adds `τ · log(train_prior)` on top, which is a second prior-based adjustment targeting the same minorities. The two corrections compound multiplicatively → overshooting on BR4 boundary → BR2 absorption.
+
+4. **Menon 2021 assumption violated.** LA is derived under the assumption that the test distribution is **class-balanced (uniform prior)**. Our test set is NOT uniform: [BR1=9.8%, BR2=36.0%, BR4=17.4%, BR5=36.7%]. LA corrects the model toward uniform predictions, but uniform is neither the train distribution nor the test distribution — it's a direction between them that happens to pass through a poor compromise for our specific test prior. BR2 (test %36, near its train %32) is pushed away from its natural optimum; BR4 (test %17.4, away from train %22.2) is pushed toward a stronger boost than test needs.
+
+5. **τ ordering insight.** τ=0.5 gave best BR2 F1 (0.772) and worst BR1 F1 (0.441); τ=1.0 gave best BR4 F1 (0.517) but collapsed BR2 (0.703); τ=1.5 didn't further improve BR4 despite more aggressive adjustment. This non-monotonicity suggests optimization dynamics (SWA trajectory + multi-task loss) interact with LA in ways the theory doesn't predict.
+
+**Action:**
+- **F2 PERMANENTLY ABANDONED** for this pipeline. Do not retry with different τ, different priors, or combined with other interventions.
+- **Route to Yol A: Task 2.0 Multi-seed ensemble.** Two additional C6 seeds (123, 2024), then combine with existing seed=42 via TTA-averaged softmax blending. Seed variance is well-characterized and known to transfer; expected +1-2pp over single-seed best.
+- **Paper framing:** F2 is reported as an ablation negative result. The zero-sum axis finding (three different mechanisms — class weights, thresholds, LA — all produce the same BR2↔BR4 trade-off) is itself a contribution: it demonstrates that the remaining F1 ceiling on this dataset is distribution-shift-fundamental, not loss-function-choice.
+
+**Permanently eliminated interventions on BR2↔BR4 boundary:**
+- Class weight manipulation (C3, Lesson #27)
+- Inference-time threshold offsets (Task 1.3, Lesson #47)
+- Training-time logit adjustment (F2, Lesson #49)
+
+Any future approach aiming for >0.70 test F1 must either (a) add new discriminative information (richer features, different modality, 16-bit dynamic range) or (b) use ensemble methods that exploit different models' residual errors rather than shifting boundaries.

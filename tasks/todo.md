@@ -263,9 +263,9 @@ Cache: `artifacts/c6_{val,test}_*.npy` (all 4 head logits + labels). Tier 1 task
 Expected Task 1.5 cumulative: nonTTA ≈ 0.6765, tta8 ≈ 0.6807 → both < 0.70 → root-cause path.
 Root cause (Lessons #47, #48 combined): val→test prior shift + full-head-already-sub-head-informed.
 
-- [ ] Task 2.2 F2 — Logit-adjusted training (Menon et al. 2021), 3 tau ablations (0.5/1.0/1.5). Directly targets prior shift.
-- [~] Task 2.0 Multi-seed ensemble — defer (3×17h GPU, unjustified until F2 signals lift).
-- [~] Task 2.1 F1 16-bit — defer (300GB preprocessing; only if F2 fails).
+- [x] Task 2.2 F2 — Logit-adjusted training. ALL τ REGRESSED (−2.9 to −3.7pp vs C6). BR2 sacrificed on BR2↔BR4 zero-sum axis (third manifestation after Lessons #27, #47). Val-test gap WIDENED (+3pp). Lesson #49. **F2 PERMANENTLY ABANDONED.**
+- [ ] Task 2.0 Multi-seed ensemble — seed=123, seed=2024 configs written. 2×17h GPU (paralel). 3-seed tta8 blend for final F1.
+- [~] Task 2.1 F1 16-bit — defer (300GB preprocessing; only if multi-seed fails too).
 
 ---
 
